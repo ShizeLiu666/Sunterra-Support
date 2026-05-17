@@ -1,0 +1,49 @@
+# Sunterra Support - AI Coding Rules
+
+## Project Context
+A ticket submission web app. Users come from Growatt ShinePhone App via deep link, submit support tickets that create Cases in Salesforce.
+
+## Tech Stack
+- Next.js 14+ (App Router)
+- TypeScript (strict mode)
+- Tailwind CSS
+- Deployment: Vercel
+
+## Brand Colors (Sunterra)
+- Primary (teal green): #1D9E75
+- Accent (amber): #FAC775
+- Dark text: #04342C
+- Light background: #E1F5EE
+
+Use primary for CTAs and key UI elements. Use accent sparingly for highlights.
+
+## Code Conventions
+1. Functional components only (no class components)
+2. File naming: kebab-case (e.g., ticket-form.tsx)
+3. Component naming: PascalCase
+4. Prefer Server Components; use 'use client' only when needed (forms, interactivity)
+5. API routes return JSON: { success: boolean, data?: any, error?: string }
+6. Avoid obvious comments
+7. Always handle errors with try/catch and user-friendly messages
+8. Use TypeScript strict types, no `any`
+
+## Security Requirements
+1. Verify URL tokens with HMAC SHA256
+2. Token expiry: 24 hours
+3. All secrets in .env.local (never commit)
+4. Validate all user inputs (length, format)
+5. Salesforce credentials NEVER exposed to client
+
+## UI Principles
+1. Mobile-first design (users primarily on phones)
+2. Flat, clean aesthetic - no gradients/shadows
+3. Pre-fill user info from URL params to show "we know you"
+4. Friendly error messages (no raw error codes)
+5. Generous touch targets (min 44px)
+
+## Collaboration Rules
+1. Don't add features I didn't request
+2. Explain reasoning before making non-trivial changes
+3. When uncertain, STOP and ASK - don't guess
+4. After completing a task, summarize: what changed, why
+5. Don't run `npm install` for packages without my approval
