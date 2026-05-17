@@ -51,10 +51,12 @@ test("描述框字数计数实时更新", async ({ page }) => {
   await setReactTextareaValue(textarea, "Hello");
   await expect(counter).toHaveText("5/500");
 
+  // 451 chars crosses the warn threshold (>= 450) → counter turns orange.
+  // Red color is reserved for >= 490, exercised in the dedicated color test.
   const longText = "a".repeat(451);
   await setReactTextareaValue(textarea, longText);
   await expect(counter).toHaveText("451/500");
-  await expect(counter).toHaveClass(/text-red-600/);
+  await expect(counter).toHaveClass(/text-orange-500/);
 });
 
 test("提交按钮点击触发 console.log", async ({ page }) => {
@@ -98,4 +100,122 @@ test("提交按钮在移动端 sticky 在底部", async ({ page }) => {
       "button bottom edge should sit near the viewport bottom when scrolled mid-page"
     ).toBeGreaterThan(viewport.height - 100);
   }
+});
+
+// === Photo upload ===
+
+function makeFile(name: string, mime: string, sizeBytes: number) {
+  return { name, mimeType: mime, buffer: Buffer.alloc(sizeBytes) };
+}
+
+// `getByRole("alert")` also matches Next.js's empty route-announcer div, so we
+// target our form's alert (a <p>) by tag + role explicitly.
+const formAlertSelector = "p[role=alert]";
+
+test("上传超过 5 张图片显示限制提示", async ({ page }) => {
+  const fileInput = page.locator("input[type=file]");
+  const six = Array.from({ length: 6 }, (_, i) =>
+    makeFile(`p${i + 1}.png`, "image/png", 1024)
+  );
+
+  await fileInput.setInputFiles(six);
+
+  await expect(page.getByRole("img", { name: /Uploaded photo/ })).toHaveCount(5);
+  await expect(page.locator(formAlertSelector)).toHaveText(/Maximum 5 photos/);
+  await expect(page.getByText(/Maximum 5 photos reached/)).toBeVisible();
+});
+
+test("上传超大文件显示提示", async ({ page }) => {
+  const fileInput = page.locator("input[type=file]");
+  const big = makeFile("huge.png", "image/png", 6 * 1024 * 1024);
+
+  await fileInput.setInputFiles([big]);
+
+  await expect(page.locator(formAlertSelector)).toHaveText(/File too large/);
+  await expect(page.getByRole("img", { name: /Uploaded photo/ })).toHaveCount(0);
+});
+
+test("删除已上传图片", async ({ page }) => {
+  const fileInput = page.locator("input[type=file]");
+  const three = Array.from({ length: 3 }, (_, i) =>
+    makeFile(`p${i + 1}.png`, "image/png", 1024)
+  );
+
+  await fileInput.setInputFiles(three);
+  await expect(page.getByRole("img", { name: /Uploaded photo/ })).toHaveCount(3);
+
+  // Remove the middle photo (index 1 → aria-label "Remove photo 2")
+  await page.getByRole("button", { name: "Remove photo 2" }).click();
+
+  await expect(page.getByRole("img", { name: /Uploaded photo/ })).toHaveCount(2);
+});
+
+test("描述框输入超长文本不破坏布局", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const textarea = page.getByLabel("Describe the issue");
+  await textarea.click();
+  await setReactTextareaValue(textarea, "X".repeat(500));
+
+  const heightPx = await textarea.evaluate(
+    (el) => (el as HTMLTextAreaElement).getBoundingClientRect().height
+  );
+  expect(heightPx, "textarea should never exceed max-h-[150px]").toBeLessThanOrEqual(150);
+
+  const overflow = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(overflow.bodyWidth).toBeLessThanOrEqual(overflow.innerWidth);
+
+  await expect(page.getByRole("button", { name: "Submit ticket" })).toBeInViewport();
+});
+
+test("描述框接近上限时字数计数变色", async ({ page }) => {
+  const textarea = page.getByLabel("Describe the issue");
+  const counter = page
+    .locator("textarea + div, textarea ~ div")
+    .filter({ hasText: /^\d+\/500$/ })
+    .first();
+
+  await textarea.click();
+
+  await setReactTextareaValue(textarea, "a".repeat(460));
+  await expect(counter).toHaveText("460/500");
+  await expect(counter).toHaveClass(/text-orange-500/);
+
+  await setReactTextareaValue(textarea, "a".repeat(495));
+  await expect(counter).toHaveText("495/500");
+  await expect(counter).toHaveClass(/text-red-600/);
+});
+
+test("Problem type 卡片连续快速点击不报错", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("/");
+
+  const cards = await page.getByRole("radio").all();
+  expect(cards).toHaveLength(6);
+
+  for (const card of cards) {
+    await card.click();
+  }
+
+  const last = cards[cards.length - 1];
+  await expect(last).toHaveAttribute("aria-checked", "true");
+
+  expect(
+    pageErrors,
+    `Page errors after rapid clicks: ${JSON.stringify(pageErrors)}`
+  ).toHaveLength(0);
+  expect(
+    consoleErrors,
+    `Console errors after rapid clicks: ${JSON.stringify(consoleErrors)}`
+  ).toHaveLength(0);
 });

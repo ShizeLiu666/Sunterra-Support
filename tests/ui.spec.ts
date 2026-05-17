@@ -50,16 +50,20 @@ test("Problem type 显示 6 个选项", async ({ page }) => {
     await expect(card.locator("svg.lucide")).toHaveCount(1);
   }
 
-  // Descriptions visible
-  await expect(page.getByText("No power generation at all")).toBeVisible();
-  await expect(page.getByText("Red light or error code on inverter")).toBeVisible();
-  await expect(page.getByText("App showing offline or no data")).toBeVisible();
+  // Descriptions visible (shortened single-line versions)
+  await expect(page.getByText("System completely offline")).toBeVisible();
+  await expect(page.getByText("Error code or alarm")).toBeVisible();
+  await expect(page.getByText("App offline or no data")).toBeVisible();
+  await expect(page.getByText("Output below expected")).toBeVisible();
+  await expect(page.getByText("Battery not working")).toBeVisible();
+  await expect(page.getByText("Other issues")).toBeVisible();
 });
 
 test("表单字段都存在", async ({ page }) => {
   await expect(page.getByLabel("Describe the issue")).toBeVisible();
   await expect(page.getByText("0/500")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Tap to upload/ })).toBeVisible();
+  await expect(page.getByText("Tap to upload")).toBeVisible();
+  await expect(page.locator("input[type=file]")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Submit ticket" })).toBeVisible();
   await expect(page.getByText("We'll respond within 24 hours")).toBeVisible();
 });
