@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sunterra Support",
-  description: "Submit a support ticket to Sunterra.",
+  title: "Support Request | Sunterra",
+  description: "Submit a service request for your solar installation.",
 };
 
 export default function RootLayout({
