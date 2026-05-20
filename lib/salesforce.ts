@@ -1,19 +1,12 @@
+import type { InstallationData } from "@/types/installation";
+
 export interface CreateCaseInput {
-  subject: string;
+  installation: InstallationData;
+  problemType: string;
   description: string;
-  contactName?: string;
-  contactAddress?: string;
-  deviceSn?: string;
-  plantId?: string;
-  attachments?: Array<{ filename: string; mimeType: string; data: Buffer }>;
 }
 
-export interface CreateCaseResult {
-  caseId: string;
-  caseNumber?: string;
-}
-
-export async function createCase(_input: CreateCaseInput): Promise<CreateCaseResult> {
+export async function createCase(_input: CreateCaseInput): Promise<{ caseId: string }> {
   // TODO: authenticate against Salesforce and create a Case record
-  throw new Error("createCase not yet implemented");
+  throw new Error("Salesforce API not yet implemented");
 }

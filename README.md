@@ -6,7 +6,7 @@ A mobile-first ticket submission web app for Sunterra customers, opened via deep
 
 ```bash
 npm install
-cp .env.local.example .env.local   # then fill in real values
+cp .env.example .env.local   # then fill in real values
 npm run dev
 ```
 
@@ -36,3 +36,28 @@ Next.js 16 (App Router) · TypeScript (strict) · Tailwind CSS v4 · deployed to
 ## Brand colors
 
 Defined as Tailwind tokens in `app/globals.css`: `sunterra-primary` `#1D9E75`, `sunterra-accent` `#FAC775`, `sunterra-dark` `#04342C`, `sunterra-light` `#E1F5EE`. Use them like `bg-sunterra-primary` or `text-sunterra-dark`.
+
+## Environment Setup
+
+1. Copy `.env.example` to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Generate an HMAC secret:
+
+```bash
+openssl rand -hex 32
+```
+
+   Paste the output into `HMAC_SECRET` in `.env.local`.
+
+3. Fill in Salesforce credentials from your Connected App:
+   - `SALESFORCE_CLIENT_ID` — Consumer Key
+   - `SALESFORCE_CLIENT_SECRET` — Consumer Secret
+   - `SALESFORCE_INSTANCE_URL` — Your SF instance (e.g., `https://sunterra.my.salesforce.com`)
+   - `SALESFORCE_USERNAME` / `SALESFORCE_PASSWORD` — SF login credentials
+     (password = your password + security token concatenated)
+
+4. Never commit `.env.local`. It's gitignored.

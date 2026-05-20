@@ -25,18 +25,21 @@ When ShinePhone redirects users to our web:
 https://support.sunterra.com.au/?data=<base64>&timestamp=<unix>&sign=<hmac> 
 
 ### data (Base64-encoded JSON)
-Contains user and installation info. Decoded JSON:
+Contains user and installation info. Decoded JSON (camelCase, matches the
+canonical schema in `types/installation.ts`):
 ```json
 {
-  "userId": "growatt user id",
-  "name": "customer full name",
-  "address": "installation address",
-  "sn": "inverter serial number",
-  "inverterModel": "e.g. Growatt SPH 6000",
-  "plantId": "growatt plant id",
-  "phone": "customer phone (optional)"
+  "sn": "inverter serial number (REQUIRED)",
+  "name": "customer full name (optional)",
+  "email": "customer email — primary contact (optional)",
+  "address": "installation address (optional)",
+  "inverterModel": "e.g. MIN3000TL-XH (optional)",
+  "language": "language code, e.g. en-AU or zh-CN (optional)"
 }
 ```
+
+`sn` is the only required field — it is used by the Salesforce Flow to match
+the corresponding Installation record. All other fields are optional.
 
 ### timestamp
 Unix timestamp (seconds) when the URL was generated.

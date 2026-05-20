@@ -18,6 +18,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import type { InstallationData } from "@/types/installation";
+
+interface TicketFormProps {
+  installationData: InstallationData;
+}
 
 interface ProblemType {
   id: string;
@@ -103,7 +108,7 @@ function counterColorClass(length: number): string {
   return "text-sunterra-dark/50";
 }
 
-export function TicketForm() {
+export function TicketForm({ installationData }: TicketFormProps) {
   const [problemType, setProblemType] = useState<string>("");
   const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
@@ -161,6 +166,7 @@ export function TicketForm() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     console.log("[ticket-form] submit", {
+      installationData,
       problemType,
       description,
       photoCount: photos.length,
