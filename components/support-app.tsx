@@ -4,11 +4,40 @@ import { useState } from "react";
 import { BrandHeader } from "@/components/brand-header";
 import InstallationInfo from "@/components/installation-info";
 import { TicketForm } from "@/components/ticket-form";
-import type { InstallationData } from "@/types/installation";
+import type { InstallationData, UrlParams } from "@/types/installation";
 
 interface SupportAppProps {
   initialData: InstallationData;
   isDevFallback?: boolean;
+}
+
+/**
+ * Read the original URL token (sn + timestamp + sign + optional fields) from
+ * window.location so the form submit can forward it for server-side
+ * re-verification. The server (app/page.tsx) has already validated it once;
+ * this is just a pass-through. Returns null during SSR/initial render before
+ * hydration completes.
+ */
+function readTokenFromUrl(): UrlParams | null {
+  if (typeof window === "undefined") return null;
+  const sp = new URLSearchParams(window.location.search);
+  const sn = sp.get("sn");
+  const timestamp = sp.get("timestamp");
+  const sign = sp.get("sign");
+  if (!sn || !timestamp || !sign) return null;
+
+  const token: UrlParams = { sn, timestamp, sign };
+  const name = sp.get("name");
+  const email = sp.get("email");
+  const address = sp.get("address");
+  const inverterModel = sp.get("inverterModel");
+  const language = sp.get("language");
+  if (name) token.name = name;
+  if (email) token.email = email;
+  if (address) token.address = address;
+  if (inverterModel) token.inverterModel = inverterModel;
+  if (language) token.language = language;
+  return token;
 }
 
 export default function SupportApp({
@@ -17,6 +46,7 @@ export default function SupportApp({
 }: SupportAppProps) {
   const [installationData, setInstallationData] =
     useState<InstallationData>(initialData);
+  const [token] = useState<UrlParams | null>(() => readTokenFromUrl());
 
   return (
     <main className="min-h-screen bg-white p-4 md:p-8 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
@@ -43,7 +73,7 @@ export default function SupportApp({
           data={installationData}
           onChange={setInstallationData}
         />
-        <TicketForm installationData={installationData} />
+        <TicketForm installationData={installationData} token={token} />
       </div>
     </main>
   );

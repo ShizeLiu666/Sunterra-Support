@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   Power,
   AlertTriangle,
@@ -18,10 +19,18 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import type { InstallationData } from "@/types/installation";
+import type { InstallationData, UrlParams } from "@/types/installation";
 
 interface TicketFormProps {
   installationData: InstallationData;
+  token: UrlParams | null;
+}
+
+interface SubmitResponseBody {
+  success?: boolean;
+  caseId?: string;
+  matched?: boolean;
+  error?: string;
 }
 
 interface ProblemType {
@@ -108,11 +117,15 @@ function counterColorClass(length: number): string {
   return "text-sunterra-dark/50";
 }
 
-export function TicketForm({ installationData }: TicketFormProps) {
+export function TicketForm({ installationData, token }: TicketFormProps) {
+  const router = useRouter();
+
   const [problemType, setProblemType] = useState<string>("");
   const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,14 +176,67 @@ export function TicketForm({ installationData }: TicketFormProps) {
     setPhotoError(null);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log("[ticket-form] submit", {
-      installationData,
-      problemType,
+    if (isSubmitting) return;
+
+    if (!token) {
+      setSubmitError(
+        "We could not read the secure link parameters. Please re-open Sunterra Support from the ShinePhone app."
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    const selectedType = PROBLEM_TYPES.find((t) => t.id === problemType);
+    const subject = selectedType
+      ? `Support: ${selectedType.label}`
+      : "Support request";
+
+    const formPayload: Record<string, string> = {
+      type: problemType,
+      subject,
       description,
-      photoCount: photos.length,
-    });
+    };
+    if (installationData.name) formPayload.customerName = installationData.name;
+    if (installationData.email) formPayload.email = installationData.email;
+    if (installationData.address) formPayload.installationStreet = installationData.address;
+
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, form: formPayload }),
+      });
+
+      let data: SubmitResponseBody | null = null;
+      try {
+        data = (await res.json()) as SubmitResponseBody;
+      } catch {
+        data = null;
+      }
+
+      if (
+        !res.ok ||
+        !data ||
+        data.success !== true ||
+        typeof data.caseId !== "string"
+      ) {
+        const message =
+          (data && typeof data.error === "string" && data.error) ||
+          `Server error (${res.status})`;
+        setSubmitError(message);
+        setIsSubmitting(false);
+        return;
+      }
+
+      router.push(`/success?caseId=${encodeURIComponent(data.caseId)}`);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Network error");
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -192,8 +258,9 @@ export function TicketForm({ installationData }: TicketFormProps) {
                 type="button"
                 role="radio"
                 aria-checked={selected}
+                disabled={isSubmitting}
                 onClick={() => setProblemType(option.id)}
-                className={`${CARD_BASE} ${selected ? CARD_SELECTED : CARD_UNSELECTED}`}
+                className={`${CARD_BASE} ${selected ? CARD_SELECTED : CARD_UNSELECTED} ${isSubmitting ? "opacity-60" : ""}`}
               >
                 <Icon
                   size={28}
@@ -237,8 +304,9 @@ export function TicketForm({ installationData }: TicketFormProps) {
           rows={4}
           maxLength={MAX_DESCRIPTION_LENGTH}
           inputMode="text"
+          disabled={isSubmitting}
           placeholder="Please tell us what is happening..."
-          className="block max-h-[150px] w-full resize-none overflow-y-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-sunterra-dark placeholder:text-gray-400 focus:border-sunterra-primary focus:outline-none"
+          className="block max-h-[150px] w-full resize-none overflow-y-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-sunterra-dark placeholder:text-gray-400 focus:border-sunterra-primary focus:outline-none disabled:opacity-60"
         />
         <div className={`mt-1 text-right text-xs ${counterColorClass(description.length)}`}>
           {description.length}/{MAX_DESCRIPTION_LENGTH}
@@ -266,8 +334,9 @@ export function TicketForm({ installationData }: TicketFormProps) {
                 <button
                   type="button"
                   onClick={() => removePhoto(index)}
+                  disabled={isSubmitting}
                   aria-label={`Remove photo ${index + 1}`}
-                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sunterra-dark text-white shadow-sm [-webkit-tap-highlight-color:transparent]"
+                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sunterra-dark text-white shadow-sm [-webkit-tap-highlight-color:transparent] disabled:opacity-60"
                 >
                   <X size={14} strokeWidth={2.5} aria-hidden="true" />
                 </button>
@@ -278,7 +347,7 @@ export function TicketForm({ installationData }: TicketFormProps) {
 
         <label
           className={`flex min-h-[88px] w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed bg-white px-4 py-5 text-gray-500 transition-colors duration-150 [-webkit-tap-highlight-color:transparent] ${
-            atMaxPhotos
+            atMaxPhotos || isSubmitting
               ? "cursor-not-allowed border-gray-200 text-gray-400"
               : "cursor-pointer border-gray-300 active:border-sunterra-primary active:text-sunterra-primary"
           }`}
@@ -292,7 +361,7 @@ export function TicketForm({ installationData }: TicketFormProps) {
             type="file"
             accept="image/*"
             multiple
-            disabled={atMaxPhotos}
+            disabled={atMaxPhotos || isSubmitting}
             onChange={handleFileChange}
             className="sr-only"
           />
@@ -311,11 +380,20 @@ export function TicketForm({ installationData }: TicketFormProps) {
           className="pointer-events-none h-6 bg-gradient-to-b from-transparent to-white md:hidden"
         />
         <div className="bg-white px-5 pb-5 pt-1 md:bg-transparent md:p-0">
+          {submitError && (
+            <div
+              role="alert"
+              className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
+              {submitError}
+            </div>
+          )}
           <button
             type="submit"
-            className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50]"
+            disabled={isSubmitting}
+            className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50] disabled:cursor-not-allowed disabled:bg-sunterra-primary/60 disabled:hover:bg-sunterra-primary/60"
           >
-            Submit ticket
+            {isSubmitting ? "Submitting..." : "Submit ticket"}
           </button>
           <p className="mt-2 text-center text-xs text-sunterra-dark/60">
             We&apos;ll respond within 24 hours
