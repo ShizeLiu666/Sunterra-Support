@@ -21,7 +21,8 @@ app/
   globals.css         Tailwind v4 + Sunterra brand color tokens
   success/page.tsx    Shown after a ticket is created
   expired/page.tsx    Shown when the deep-link token is invalid/expired
-  api/submit/route.ts POST endpoint that creates the Salesforce Case
+  api/submit/route.ts POST endpoint: re-verifies the deep-link token server-side
+                      and creates the Salesforce Customer_Care__c record
 components/           Reusable UI components
 lib/
   token.ts            HMAC-SHA256 deep-link token verification
@@ -53,11 +54,28 @@ openssl rand -hex 32
 
    Paste the output into `HMAC_SECRET` in `.env.local`.
 
-3. Fill in Salesforce credentials from your Connected App:
-   - `SALESFORCE_CLIENT_ID` — Consumer Key
-   - `SALESFORCE_CLIENT_SECRET` — Consumer Secret
-   - `SALESFORCE_INSTANCE_URL` — Your SF instance (e.g., `https://sunterra.my.salesforce.com`)
-   - `SALESFORCE_USERNAME` / `SALESFORCE_PASSWORD` — SF login credentials
-     (password = your password + security token concatenated)
+3. Fill in Salesforce credentials. This project uses the **OAuth 2.0 Client
+   Credentials Flow** via an External Client App, so no SF username or password
+   is needed — the "Run As User" is configured inside the External Client App
+   itself.
+
+   - `SALESFORCE_CLIENT_ID` — External Client App Consumer Key
+   - `SALESFORCE_CLIENT_SECRET` — External Client App Consumer Secret
+   - `SALESFORCE_INSTANCE_URL` — SF org base URL
+     (sandbox: `https://sunterra--dev.sandbox.my.salesforce.com`,
+     production: `https://sunterra.my.salesforce.com`)
+   - `SALESFORCE_API_VERSION` — REST API version path segment (`v62.0`)
 
 4. Never commit `.env.local`. It's gitignored.
+
+## Development tools
+
+In development mode (`NODE_ENV=development`) the app exposes a helper at
+[http://localhost:3000/dev/test-link](http://localhost:3000/dev/test-link).
+
+It generates HMAC-signed deep-link URLs that mimic what the ShinePhone App will
+eventually produce, so you can exercise the form without having to construct
+signatures by hand. Pick from preset variants (valid / expired / tampered /
+missing-sn) and the page returns a clickable URL.
+
+These endpoints are gated by `NODE_ENV` and return 404 in production builds.

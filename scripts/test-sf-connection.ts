@@ -174,7 +174,7 @@ async function describeObject(
     });
   } catch (err) {
     console.error(`[${label}] network error: ${(err as Error).message}`);
-    return { ok: false, status: 0, customFields: [], totalFields: 0 };
+    return { ok: false, status: 0, customFields: [], totalFields: 0, allFields: [] };
   }
 
   console.log(`[${label}] Status: ${res.status} ${res.statusText}`);
@@ -188,6 +188,7 @@ async function describeObject(
       status: res.status,
       customFields: [],
       totalFields: 0,
+      allFields: [],
       errorBody: rawBody,
     };
   }
@@ -200,7 +201,7 @@ async function describeObject(
       `[${label}] failed to parse JSON: ${(err as Error).message}. Raw body:`
     );
     console.error(rawBody);
-    return { ok: false, status: res.status, customFields: [], totalFields: 0 };
+    return { ok: false, status: 0, customFields: [], totalFields: 0, allFields: [] };
   }
 
   const allFields = Array.isArray(parsed.fields) ? parsed.fields : [];
