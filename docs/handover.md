@@ -1,6 +1,6 @@
 # Sunterra Support — Project Handover
 
-> Last updated: 2026-05-20 (after Phase 2F completion)
+> Last updated: 2026-05-21 (Phase 2F verified; ownership corrected)
 >
 > This file is the single source of truth for project state.
 > Read this first when joining the project or starting a new chat session.
@@ -17,8 +17,9 @@ this web app with the user's installation pre-filled.
 This web app is a single-purpose mobile-first ticket-submission form: the user
 picks a problem type, types a description, optionally adds photos, and submits.
 The server creates a `Customer_Care__c` record in Salesforce; downstream
-automation in Salesforce (owned by Sunterra Ops) routes the case to a support
-engineer. The web app's responsibilities end at "case created in SF".
+automation in Salesforce (Jack-owned, see "Salesforce admin" role below)
+routes the case to a support engineer. The web app's responsibilities end at
+"case created in SF".
 
 ## Architecture
 
@@ -49,7 +50,7 @@ engineer. The web app's responsibilities end at "case created in SF".
              ▼
    ┌──────────────────────┐
    │ Salesforce sandbox   │  Customer_Care__c row created
-   │ + downstream Flow*   │  *Flow owned by Sunterra Ops, not us
+   │ + downstream Flow*   │  *Flow to be implemented by Jack (Phase 2I)
    └──────────────────────┘
 ```
 
@@ -101,8 +102,9 @@ Therefore the design decision (finalised 2026-05-20):
 > 1. Web creates `Customer_Care__c` with the raw SN in
 >    `Inverter_Battery_Serials__c` (plain text).
 > 2. `Job_Number__c` is left blank (lookup unset).
-> 3. A Salesforce Flow on the Sunterra side (owned by Ops) reconciles SN →
->    `Job__c` after-the-fact.
+> 3. A Salesforce Flow on the `Customer_Care__c` insert reconciles SN →
+>    `Job__c` after-the-fact. Implementation is owned by Jack and scheduled
+>    as Phase 2I.
 > 4. If Flow can't match: manual processing by the Sunterra support team.
 
 **Do not re-implement SN lookup on the web side.** Both SOQL and SOSL were
@@ -146,6 +148,15 @@ prototyped and rejected. This decision is final.
 
 - `v62.0` — set via `SALESFORCE_API_VERSION` in `.env.local`
 
+### Picklist values verified on 2026-05-21
+
+- `Customer_Care__c.Status__c` accepts these active values:
+  `Open` (default), `In Progress`, `Escalated`,
+  `Customer Care Done, Waiting Payment From Liable`, `Closed`, `On Hold`.
+  The web app sends `'Open'` (the default), which is valid. Earlier
+  handover notes claiming `'New'` was the correct initial value were
+  incorrect — there is no `'New'` value in this picklist.
+
 ## Completed phases
 
 - ✅ **Phase 1** — UI shell (mobile-first, Tailwind v4, brand colours)
@@ -185,15 +196,56 @@ previews; nothing is uploaded yet.
 - Switch SF env vars from sandbox to production
 - Verify production `Type__c` picklist values match the web's `TYPE_MAP`
 
+### Phase 2I — SN → `Job__c` reconciliation Flow (not started)
+
+The web layer intentionally does not look up `Job__c` by SN
+(see Salesforce data model > SN matching). A Salesforce Flow must run
+on `Customer_Care__c` insert to:
+
+1. Read `Inverter_Battery_Serials__c` (raw SN string from the customer).
+2. Iterate over `Job__c` records and substring-match SN against
+   `Job__c.Inverter_Battery_Serials__c` (Long Text Area, ~5.6 SNs avg).
+3. If exactly one match: set `Customer_Care__c.Job_Number__c` to that
+   `Job__c.Id`.
+4. If zero or multiple matches: leave `Job_Number__c` blank; the case
+   is handled manually by the support team.
+
+Owner: Jack. Implemented declaratively in SF Setup (no Apex unless
+the substring loop hits CPU limits at production data volumes).
+
 ### Outstanding items (blocking or near-blocking)
 
 | Item                                                   | Owner    | Notes                                                |
 |--------------------------------------------------------|----------|------------------------------------------------------|
-| Verify field-by-field mapping on case `a1y8s00000EcUhlAAF` | Sunterra | Sandbox check, scheduled 2026-05-21                  |
-| Add `'ShinePhone'` to `Case_Origin__c` picklist            | Sunterra Ops | Web currently sends `'Web'` as fallback              |
-| Implement SN → `Job__c` Flow on `Customer_Care__c` insert  | Sunterra Ops | The whole reason web doesn't do the lookup           |
-| Verify production `Type__c` picklist values vs `TYPE_MAP`  | Sunterra Ops | Sandbox values may differ from production            |
+| Verify field-by-field mapping on case `a1y8s00000EcUhlAAF` | Jack | ✅ Done 2026-05-21 — all 12 fields PASS (incl. Job_Number__c blank, Type__c=General Inquiries) |
+| Add `'ShinePhone'` to `Case_Origin__c` picklist            | Jack | Sandbox + production both, before Growatt cut-over   |
+| Implement SN → `Job__c` Flow on `Customer_Care__c` insert  | Jack | Phase 2I; the whole reason web doesn't do the lookup |
+| Verify production `Type__c` picklist values vs `TYPE_MAP`  | Jack | Before Phase 2H cut-over                             |
 | HMAC secret exchange with Growatt + test APK + cut-over    | Growatt  | Required before any real ShinePhone integration test |
+
+#### Field verification detail (`a1y8s00000EcUhlAAF` / Case-14060)
+
+Verified via SOQL on 2026-05-21 morning:
+
+| Field                            | Expected             | Actual               | Result |
+|----------------------------------|----------------------|----------------------|--------|
+| `Name` (Auto Number)             | Case-XXXXX           | Case-14060           | ✅     |
+| `Type__c`                        | General Inquiries    | General Inquiries    | ✅     |
+| `Subject__c`                     | (any)                | Support request      | ✅     |
+| `Description__c`                 | (non-empty)          | (non-empty)          | ✅     |
+| `Inverter_Battery_Serials__c`    | GW2024XK8B72         | GW2024XK8B72         | ✅     |
+| `Customer_Name__c`               | (non-empty)          | Jack Test            | ✅     |
+| `Email__c`                       | (non-empty)          | jack-test@example... | ✅     |
+| `Installation_Street__c`         | (non-empty)          | 123 Test Street, ... | ✅     |
+| `Job_Number__c`                  | blank (unmatched)    | blank                | ✅⭐   |
+| `Case_Origin__c`                 | Web                  | Web                  | ✅     |
+| `Status__c`                      | Open (default)       | Open                 | ✅     |
+| `CreatedBy.Username`             | jack.liu@sunterra... | jack.liu@sunterra... | ✅     |
+
+The starred row (`Job_Number__c` blank) is the key design validation:
+unmatched SN correctly results in a null lookup, not an error, not a
+guess. The SN → `Job__c` reconciliation will be handled by the Phase 2I
+Flow.
 
 ## Key environment variables
 
@@ -263,16 +315,17 @@ Carried forward from previous handover, updated to today's state:
   `// eslint-disable-next-line react-hooks/set-state-in-effect` on the
   draft-sync effect. Modern React 19 guidance is `key={value}` or
   derive-during-render. Refactor candidate.
-- **`README.md`** was updated this session — no longer mentions
-  `SALESFORCE_USERNAME` / `SALESFORCE_PASSWORD`. Done.
-- **`docs/integration-spec.md`** was updated this session — URL format corrected
-  to flat camelCase, "Open questions" marked confirmed. Done.
+- **`README.md`** was updated in the 2026-05-20 handover session — no
+  longer mentions `SALESFORCE_USERNAME` / `SALESFORCE_PASSWORD`. Done.
+- **`docs/integration-spec.md`** was updated in the 2026-05-20 handover
+  session — URL format corrected to flat camelCase, "Open questions"
+  marked confirmed. Done.
 - **Sandbox test cases need manual cleanup** (4 records, all under the
   Integration User). To delete in SF UI:
   - `a1y8s00000EcTovAAF`
   - `a1y8s00000EcTqXAAV`
   - `a1y8s00000EcTtlAAF`
-  - `a1y8s00000EcUhlAAF`
+  - `a1y8s00000EcUhlAAF` (verified 2026-05-21, delete after Phase 2I)
 - **Unused `TicketSubmission` type** in `types/installation.ts` — defined but
   never imported. Either wire it in or delete it.
 - **Production deployment** not configured (no Vercel project, no custom
@@ -299,9 +352,15 @@ If the test-link page 404s, you're not in development mode — check `NODE_ENV`.
 This is a multi-party project. Roles:
 
 - **Sunterra tech coordinator** — owns the project, drives the schedule,
-  reviews everything, talks to Sunterra Ops and Growatt.
-- **Sunterra Ops** — Salesforce admin and process owner. Writes Flows, manages
-  picklists, owns the data model.
+  reviews everything, owns Salesforce admin work directly, talks to Lily
+  (Sunterra owner) on business decisions and to Growatt on the ShinePhone
+  integration.
+- **Salesforce admin** — Jack. Owns the SF data model for this project:
+  configures the External Client App, Permission Sets, Integration User,
+  picklist values, and will implement the SN → `Job__c` Flow in Phase 2I.
+  Historical baseline (the `Customer_Care__c` object and most of its
+  picklist values) was set up years ago by Lily Zhou; she is no longer
+  hands-on.
 - **Growatt** — ShinePhone integration partner. Will eventually sign URLs and
   redirect users to this web app.
 - **Claude (planning AI)** — gives strategy, writes the structured Cursor
