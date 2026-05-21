@@ -2,26 +2,41 @@ import { NextResponse } from "next/server";
 import { verifyToken } from "@/lib/token";
 import {
   createCustomerCare,
+  uploadPhotoToCase,
   type CreateCustomerCareInput,
 } from "@/lib/salesforce";
 
 /**
  * POST /api/submit
  *
- * Accepts a JSON body of the form { token, form }, re-verifies the URL token
- * server-side (defense in depth — clients could bypass page.tsx and POST
- * directly), maps form values to SF picklist values, and creates a
- * Customer_Care__c record via lib/salesforce.
+ * Accepts a JSON body of the form { token, form, photos? }, re-verifies the
+ * URL token server-side (defense in depth — clients could bypass page.tsx and
+ * POST directly), maps form values to SF picklist values, creates a
+ * Customer_Care__c record via lib/salesforce, then (Phase 2G-3) uploads any
+ * attached photos serially via uploadPhotoToCase.
  *
  * Job_Number__c is never set from the web layer; Sunterra's downstream SF
  * Flow reconciles SN → Job__c.
  *
+ * Request body:
+ *   {
+ *     token:  { sn, timestamp, sign, name?, email?, address?, ... },
+ *     form:   { type, subject, description, customerName?, email?, ... },
+ *     photos?: [{ filename: string, mimeType: "image/...", base64: string }]
+ *   }
+ *   - photos is optional; max 5 entries; each base64 is raw (no data-URL prefix).
+ *
  * Response shapes:
- *   200 { success: true, caseNumber, matched }
+ *   200 { success: true, caseNumber, matched, photoWarning? }
  *     - caseNumber is the customer-facing Auto Number Name (e.g. "Case-14060");
  *       if the post-create Name lookup failed it falls back to the 18-char
  *       Record ID so the client always has *some* reference to display.
+ *     - photoWarning is the count of photos that failed to upload; the field
+ *       is OMITTED when zero (so the client URL stays clean on the happy path).
+ *     - The Case is NEVER rolled back when photo uploads fail; the customer's
+ *       ticket is more important than the attachments.
  *   400 { success: false, error: "invalid request body" }
+ *   400 { success: false, error: "Invalid photos payload" }
  *   401 { success: false, error: "invalid token" }
  *   500 { success: false, error: <message> }
  */
@@ -50,10 +65,19 @@ interface SubmitFormPayload {
   installationPostcode?: string;
 }
 
+interface PhotoInput {
+  filename: string;
+  mimeType: string;
+  base64: string;
+}
+
 interface SubmitRequestBody {
   token: SubmitTokenPayload;
   form: SubmitFormPayload;
+  photos?: PhotoInput[];
 }
+
+const MAX_PHOTOS = 5;
 
 const TYPE_MAP: Record<string, string> = {
   system_not_working: "Growatt inverter Issue",
@@ -144,6 +168,45 @@ function validateBody(raw: unknown): SubmitRequestBody | null {
   return { token, form };
 }
 
+/**
+ * Validates the optional `photos` field on the request body. Returns:
+ *   - { ok: true, photos: [] }      when the field is absent (no photos)
+ *   - { ok: true, photos: [...] }   when the field is a valid array
+ *   - { ok: false }                 when the field is present but malformed
+ */
+function validatePhotos(
+  raw: unknown
+): { ok: true; photos: PhotoInput[] } | { ok: false } {
+  if (typeof raw !== "object" || raw === null) {
+    // Caller already verified the outer body; this guard is defensive.
+    return { ok: false };
+  }
+  const obj = raw as Record<string, unknown>;
+  if (!("photos" in obj) || obj.photos === undefined) {
+    return { ok: true, photos: [] };
+  }
+  const rawPhotos = obj.photos;
+  if (!Array.isArray(rawPhotos)) return { ok: false };
+  if (rawPhotos.length > MAX_PHOTOS) return { ok: false };
+
+  const photos: PhotoInput[] = [];
+  for (const item of rawPhotos) {
+    if (typeof item !== "object" || item === null) return { ok: false };
+    const p = item as Record<string, unknown>;
+    if (!isString(p.filename) || p.filename.length === 0) return { ok: false };
+    if (!isString(p.mimeType) || !p.mimeType.startsWith("image/")) {
+      return { ok: false };
+    }
+    if (!isString(p.base64) || p.base64.length === 0) return { ok: false };
+    photos.push({
+      filename: p.filename,
+      mimeType: p.mimeType,
+      base64: p.base64,
+    });
+  }
+  return { ok: true, photos };
+}
+
 export async function POST(request: Request): Promise<Response> {
   let raw: unknown;
   try {
@@ -162,6 +225,15 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 }
     );
   }
+
+  const photosResult = validatePhotos(raw);
+  if (!photosResult.ok) {
+    return NextResponse.json(
+      { success: false, error: "Invalid photos payload" },
+      { status: 400 }
+    );
+  }
+  body.photos = photosResult.photos;
 
   const urlParams = new URLSearchParams();
   urlParams.set("sn", body.token.sn);
@@ -230,11 +302,54 @@ export async function POST(request: Request): Promise<Response> {
     console.log(
       `[/api/submit] case_created: id=${result.id} name=${result.name ?? "(unavailable)"} sn=${body.token.sn} type=${sfType} matched=${result.matched}`
     );
-    return NextResponse.json({
+
+    let photoFailures = 0;
+    const photos = body.photos ?? [];
+    if (photos.length > 0) {
+      console.log(
+        `[/api/submit] uploading ${photos.length} photos to case ${result.id}`
+      );
+      // Serial on purpose: Salesforce dislikes parallel ContentVersion writes
+      // from the same session, and 5 sequential calls is fast enough.
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const uploadResult = await uploadPhotoToCase({
+          caseId: result.id,
+          title: `${result.name ?? "case"}-photo-${i + 1}`,
+          filename: photo.filename,
+          base64Data: photo.base64,
+          mimeType: photo.mimeType,
+        });
+        if (!uploadResult.success) {
+          photoFailures++;
+          console.error(
+            `[/api/submit] photo ${i + 1}/${photos.length} failed:`,
+            uploadResult.error.kind,
+            `httpStatus=${uploadResult.error.httpStatus ?? "n/a"}`,
+            uploadResult.error.message.slice(0, 200)
+          );
+        }
+      }
+      console.log(
+        `[/api/submit] photo upload done: ${photos.length - photoFailures}/${photos.length} succeeded`
+      );
+    }
+
+    // The Case is never rolled back even if every photo failed — the customer's
+    // ticket is more important than the attachments. /success renders the
+    // warning banner so the user knows to email the missing photos.
+    const responseBody: {
+      success: true;
+      caseNumber: string;
+      matched: boolean;
+      photoWarning?: number;
+    } = {
       success: true,
       caseNumber,
       matched: result.matched,
-    });
+    };
+    if (photoFailures > 0) responseBody.photoWarning = photoFailures;
+    return NextResponse.json(responseBody);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.log(

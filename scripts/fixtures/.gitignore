@@ -1,0 +1,5 @@
+# Never commit real fixture images (or any other binaries) from this folder.
+# Keep the directory tracked via .gitkeep only.
+*
+!.gitignore
+!.gitkeep

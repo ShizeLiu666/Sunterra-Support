@@ -1,6 +1,9 @@
 /**
  * Shown after a Customer_Care__c record has been created in Salesforce.
- * Receives `?caseNumber=<Case-XXXXX>` from the ticket-form redirect.
+ * Receives `?caseNumber=<Case-XXXXX>` from the ticket-form redirect, plus an
+ * optional `?photoWarning=N` (Phase 2G-3) when one or more attached photos
+ * failed to upload (either client-side compression failure or server-side
+ * Salesforce Files upload failure).
  *
  * When the post-create Name lookup in /api/submit succeeds, caseNumber is
  * the human-friendly Auto Number (e.g. "Case-14060") and is displayed as
@@ -18,7 +21,7 @@ export const metadata = {
 };
 
 interface SuccessPageProps {
-  searchParams: Promise<{ caseNumber?: string }>;
+  searchParams: Promise<{ caseNumber?: string; photoWarning?: string }>;
 }
 
 /**
@@ -37,6 +40,16 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
       ? params.caseNumber
       : undefined;
   const isFallback = caseNumber ? looksLikeRecordIdFallback(caseNumber) : false;
+
+  const parsedPhotoWarning =
+    typeof params.photoWarning === "string"
+      ? parseInt(params.photoWarning, 10)
+      : 0;
+  const photoWarning =
+    Number.isFinite(parsedPhotoWarning) && parsedPhotoWarning > 0
+      ? parsedPhotoWarning
+      : 0;
+  const showPhotoWarning = photoWarning > 0;
 
   return (
     <main className="min-h-screen bg-white flex items-center justify-center p-6 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
@@ -79,6 +92,19 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
             Reference (please save this):{" "}
             <code className="font-mono text-sunterra-dark/80">{caseNumber}</code>
           </p>
+        )}
+
+        {showPhotoWarning && (
+          <div
+            role="alert"
+            className="mx-auto mb-6 max-w-md rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800"
+          >
+            <p>
+              Note: {photoWarning}{" "}
+              {photoWarning === 1 ? "photo was" : "photos were"} not attached.
+              If any are important, please email us at XXX.
+            </p>
+          </div>
         )}
 
         <p className="text-sm text-sunterra-dark/70">

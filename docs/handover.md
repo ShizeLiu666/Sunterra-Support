@@ -1,6 +1,6 @@
 # Sunterra Support — Project Handover
 
-> Last updated: 2026-05-21 (Phase 2F verified; ownership corrected)
+> Last updated: 2026-05-21 (Phase 2G complete; end-to-end photo upload verified)
 >
 > This file is the single source of truth for project state.
 > Read this first when joining the project or starting a new chat session.
@@ -15,7 +15,8 @@ customer hits a problem, ShinePhone offers a "Support" entry that deep-links to
 this web app with the user's installation pre-filled.
 
 This web app is a single-purpose mobile-first ticket-submission form: the user
-picks a problem type, types a description, optionally adds photos, and submits.
+picks a problem type, types a description, optionally adds up to 5 photos
+(compressed client-side before upload), and submits.
 The server creates a `Customer_Care__c` record in Salesforce; downstream
 automation in Salesforce (Jack-owned, see "Salesforce admin" role below)
 routes the case to a support engineer. The web app's responsibilities end at
@@ -43,10 +44,14 @@ routes the case to a support engineer. The web app's responsibilities end at
              │  POST /api/submit  ({ token, form })
              ▼
    ┌──────────────────────┐
-   │ /api/submit          │  re-verify token, map fields,
-   │   lib/salesforce.ts  │  call Salesforce REST API
+   │ /api/submit          │  POST handler: re-verifies token, builds
+   │   lib/salesforce.ts  │  SF payload, creates Customer_Care__c,
+   │                      │  then uploads any attached photos
+   │                      │  serially (1-by-1) as ContentVersion
    └─────────┬────────────┘
              │  POST /sobjects/Customer_Care__c
+             │  POST /sobjects/ContentVersion (per photo,
+             │     with FirstPublishLocationId = case Id)
              ▼
    ┌──────────────────────┐
    │ Salesforce sandbox   │  Customer_Care__c row created
@@ -59,6 +64,8 @@ routes the case to a support engineer. The web app's responsibilities end at
 - **Next.js 16** (App Router, Turbopack)
 - **TypeScript** (strict)
 - **Tailwind CSS v4**
+- **browser-image-compression v2.x** — client-side photo
+  compression (Phase 2G)
 - **Salesforce REST API** via OAuth 2.0 **Client Credentials Flow**
   (External Client App, no username/password)
 - **Node `crypto`** for HMAC-SHA256
@@ -178,23 +185,55 @@ prototyped and rejected. This decision is final.
 - ✅ **Phase 2F-4** — `app/success/page.tsx`: English copy, displays caseId from
   search params, matches `/expired` styling
 - ✅ **End-to-end verified** in sandbox: caseId `a1y8s00000EcUhlAAF`
+- ✅ **Phase 2G-1** — `lib/salesforce.ts`: `uploadPhotoToCase()`
+  helper using ContentVersion + FirstPublishLocationId for one-shot
+  file + link creation. Verified end-to-end via
+  `scripts/test-photo-upload.ts`.
+- ✅ **Phase 2G-2** — `components/ticket-form.tsx`: client-side
+  image compression via `browser-image-compression` (~26KB gzip),
+  maxSizeMB: 0.8, maxWidthOrHeight: 1600. Submit button shows
+  "Preparing photos..." → "Submitting..." → "Attaching photos..."
+  stages. MAX_PHOTO_SIZE_BYTES raised to 15MB (selection-time
+  only; compression handles the heavy lifting).
+- ✅ **Phase 2G-3** — `/api/submit` + `/success` integration:
+  photos transported as JSON+base64 in request body, server-side
+  uploaded serially to Salesforce, partial failures surfaced via
+  `?photoWarning=N` to `/success` (orange warning banner with
+  singular/plural copy).
+- ✅ **End-to-end verified** in sandbox: Case-14068 with 1 photo
+  attached + 1 deliberately oversized payload rejected, photoWarning
+  correctly displayed.
 
 ## Next phases
-
-### Phase 2G — Photo upload (not started)
-
-The UI already accepts photos as in-memory `File` objects with object-URL
-previews; nothing is uploaded yet.
-
-- Pick a storage target (S3 vs Cloudinary vs Vercel Blob — TBD)
-- Upload during form submit, get back URLs
-- Attach URLs to `Customer_Care__c` (TBD which field; ask Ops)
 
 ### Phase 2H — Production deployment (not started)
 
 - Vercel project + custom domain `support.sunterra.com.au`
 - Switch SF env vars from sandbox to production
-- Verify production `Type__c` picklist values match the web's `TYPE_MAP`
+- Verify production `Type__c` picklist values match the web's
+  `TYPE_MAP`
+- **Production Salesforce config** (Jack to replicate from sandbox):
+  - Create matching `Sunterra Support API Access` Permission Set
+    in production (Customer_Care__c + Job__c + Files implicit)
+  - Verify production `Customer_Care__c` page layout includes the
+    Files related list. Sandbox needed this added (Lily's 2018
+    layout didn't have it). If production also lacks it, add it.
+  - Verify Integration User profile is `Salesforce API Only System
+    Integrations` and has the new Permission Set assigned.
+- **Vercel platform constraints to address before launch:**
+  - Default sync function body limit is 4.5MB. 5 photos × 0.8MB
+    compressed × 1.37 base64 inflation ≈ 5.5MB worst case — could
+    hit 413 in production. Options: (a) reduce client-side
+    `maxSizeMB` to 0.5; (b) switch /api/submit to multipart/form-data
+    + Edge runtime; (c) batch uploads through a separate /api/upload
+    endpoint.
+  - Default sync function timeout is 10s. Serial upload of 5 photos
+    can take 5-10s under network jitter (each SF Files API call
+    ~800ms-2s). Options: (a) upgrade to Vercel Pro Edge (~5min
+    timeout); (b) limit concurrent uploads to 2-3 instead of fully
+    serial; (c) fire-and-forget photo uploads after Case is created.
+- **Replace placeholder "XXX" in /success warning banner** with the
+  real Sunterra customer support email address (Jack to decide).
 
 ### Phase 2I — SN → `Job__c` reconciliation Flow (not started)
 
@@ -219,6 +258,9 @@ the substring loop hits CPU limits at production data volumes).
 |--------------------------------------------------------|----------|------------------------------------------------------|
 | Verify field-by-field mapping on case `a1y8s00000EcUhlAAF` | Jack | ✅ Done 2026-05-21 — all 12 fields PASS (incl. Job_Number__c blank, Type__c=General Inquiries) |
 | Add `'ShinePhone'` to `Case_Origin__c` picklist            | Jack | Sandbox + production both, before Growatt cut-over   |
+| Add Files related list to production `Customer_Care__c` page layout | Jack | Before Phase 2H cut-over; sandbox already has it |
+| Replace `XXX` placeholder in /success warning with real support email | Jack | Before Phase 2H cut-over |
+| Address Vercel 4.5MB body limit + 10s timeout for photo uploads | Jack | Before Phase 2H cut-over; see Phase 2H notes |
 | Implement SN → `Job__c` Flow on `Customer_Care__c` insert  | Jack | Phase 2I; the whole reason web doesn't do the lookup |
 | Verify production `Type__c` picklist values vs `TYPE_MAP`  | Jack | Before Phase 2H cut-over                             |
 | HMAC secret exchange with Growatt + test APK + cut-over    | Growatt  | Required before any real ShinePhone integration test |
@@ -320,12 +362,57 @@ Carried forward from previous handover, updated to today's state:
 - **`docs/integration-spec.md`** was updated in the 2026-05-20 handover
   session — URL format corrected to flat camelCase, "Open questions"
   marked confirmed. Done.
-- **Sandbox test cases need manual cleanup** (4 records, all under the
-  Integration User). To delete in SF UI:
-  - `a1y8s00000EcTovAAF`
-  - `a1y8s00000EcTqXAAV`
-  - `a1y8s00000EcTtlAAF`
-  - `a1y8s00000EcUhlAAF` (verified 2026-05-21, delete after Phase 2I)
+- **Salesforce does not validate ContentVersion image data**:
+  During Phase 2G-3 testing, SF accepted any byte stream (including
+  49-byte ASCII text and random characters) as valid image content
+  as long as mimeType claimed `image/jpeg`. In practice this isn't
+  triggered because `browser-image-compression` re-encodes via
+  Canvas which can only output valid JPEGs. But a malicious or
+  poorly-coded client could upload garbage files that occupy SF
+  storage and confuse support staff. Mitigations to consider
+  pre-launch: server-side magic-byte verification in
+  `uploadPhotoToCase()` (check first 3 bytes are `FF D8 FF` for
+  JPEG, etc).
+- **Photo upload: Promise.all parallel compression and encoding may
+  pressure memory on low-end devices**: Browser side, all 5 photos
+  compress + encode in parallel via `Promise.all`. Peak memory ~5 ×
+  (1MB image + canvas + base64 buffer) ≈ 15-20 MB transient. Most
+  iPhones and modern Android handle this fine; low-end Android 6/8
+  devices may OOM. If reports come in post-launch, switch to limited
+  concurrency (e.g. p-limit with concurrency 2-3) or sequential.
+- **Photo filenames not sanitized**: Customer's original file names
+  (e.g., `IMG_3421.HEIC`, or names with Chinese chars / emoji) are
+  passed directly to SF `ContentVersion.PathOnClient` field
+  (Text(255)). SF accepts most things, but extreme cases (>255
+  chars, certain reserved chars) would fail that one photo. Currently
+  handled by the per-photo failure path; could be improved with
+  client-side sanitization.
+- **Compression failure loses original photo**: If
+  `browser-image-compression` fails on a specific photo (e.g.,
+  corrupted source), the original is dropped rather than uploaded
+  raw. The warning banner says "1 photo was not attached" but
+  doesn't tell the user *which* photo. This is acceptable for v1
+  but a candidate for UX improvement.
+- **`scripts/test-partial-failure.ts` and `scripts/fixtures/broken.jpg`
+  are kept for regression testing of partial-failure path**. Can
+  be removed if regression suite is replaced with proper integration
+  tests. `broken.jpg` is gitignored (49 bytes of ASCII).
+- **Sandbox test cases need manual cleanup** (multiple records under
+  the Integration User, accumulated from Phase 2F + Phase 2G testing).
+  Customer_Care__c records to delete in SF UI:
+  - `a1y8s00000EcTovAAF` (Phase 2F early test)
+  - `a1y8s00000EcTqXAAV` (Phase 2F early test)
+  - `a1y8s00000EcTtlAAF` (Phase 2F early test)
+  - `a1y8s00000EcUhlAAF` / Case-14060 (Phase 2F final verification,
+    keep until Phase 2I uses it as reference)
+  - Case-14061 (caseNumber display rollout test)
+  - Case-14063 (Phase 2G-2 end-to-end test)
+  - Case-14066, Case-14067 (Phase 2G-3 failure path testing
+    — SF accepted any bytes as image content, see tech debt below)
+  - Case-14068 (Phase 2G-3 partial-failure final verification)
+
+  ContentVersion records (file attachments) will be deleted
+  automatically when their parent Customer_Care__c is deleted.
 - **Unused `TicketSubmission` type** in `types/installation.ts` — defined but
   never imported. Either wire it in or delete it.
 - **Production deployment** not configured (no Vercel project, no custom
