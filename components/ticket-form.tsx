@@ -10,11 +10,11 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Power,
   AlertTriangle,
   WifiOff,
   TrendingDown,
   BatteryWarning,
+  Wrench,
   HelpCircle,
   X,
   type LucideIcon,
@@ -44,38 +44,38 @@ interface ProblemType {
 
 const PROBLEM_TYPES: readonly ProblemType[] = [
   {
-    id: "system_not_working",
-    label: "System not working",
-    description: "System completely offline",
-    Icon: Power,
-  },
-  {
-    id: "warning_or_error",
-    label: "Warning or error",
-    description: "Error code or alarm",
-    Icon: AlertTriangle,
-  },
-  {
-    id: "no_data_in_app",
-    label: "Cannot see data",
-    description: "App offline or no data",
-    Icon: WifiOff,
-  },
-  {
-    id: "low_output",
-    label: "Low output",
-    description: "Output below expected",
-    Icon: TrendingDown,
-  },
-  {
     id: "battery_issue",
-    label: "Battery issue",
+    label: "Battery Issue",
     description: "Battery not working",
     Icon: BatteryWarning,
   },
   {
+    id: "inverter_issue",
+    label: "Inverter Issue",
+    description: "Inverter problem or error",
+    Icon: AlertTriangle,
+  },
+  {
+    id: "app_monitoring",
+    label: "App Monitoring",
+    description: "Cannot see data in app",
+    Icon: WifiOff,
+  },
+  {
+    id: "system_performance",
+    label: "System Performance",
+    description: "Low output or high bill",
+    Icon: TrendingDown,
+  },
+  {
+    id: "installation_quality",
+    label: "Installation Quality",
+    description: "Installation issue",
+    Icon: Wrench,
+  },
+  {
     id: "other",
-    label: "Other",
+    label: "Other Issue",
     description: "Other issues",
     Icon: HelpCircle,
   },

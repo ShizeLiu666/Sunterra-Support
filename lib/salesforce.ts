@@ -160,8 +160,12 @@ export interface CreateCustomerCareInput {
  *   - name    — Auto Number `Name` field (e.g. "Case-14060"), the
  *               customer-facing reference. `null` if the post-create GET
  *               failed; the create itself is still considered successful.
- *   - matched — true iff an installationId was supplied (the SN already
- *               resolved to a Job__c upstream).
+ *   - matched — true iff Phase 2F-2's findJobBySN() resolved the input SN
+ *               to a Job__c record. Phase 2F-2 owns this resolution
+ *               internally; the legacy `input.installationId` escape hatch
+ *               still wins for Job_Number__c when present, but does NOT
+ *               flip matched=true (matched strictly reflects the SOSL
+ *               lookup outcome).
  *
  * Fields with undefined/null values are omitted from the POST body so SF's
  * defaults stay in effect. Specifically: Status__c and Priority__c are
@@ -172,6 +176,17 @@ export async function createCustomerCare(
 ): Promise<{ id: string; name: string | null; matched: boolean }> {
   const token = await getAccessToken();
 
+  // --- Phase 2F-2: SN reverse-lookup to Job__c ---
+  // findJobBySN never throws; on any failure (network/timeout/permission/
+  // 0 results/etc.) it returns null and logs to console.error. We treat
+  // null as "unmatched" — case is still created, just without Job_Number__c
+  // populated. Support staff will reconcile manually.
+  let matchedJob: JobLookupResult | null = null;
+  if (input.sn) {
+    matchedJob = await findJobBySN(input.sn, token, instanceBaseUrl());
+  }
+  // --- end Phase 2F-2 SN lookup ---
+
   const body: Record<string, string> = {
     Subject__c: input.subject,
     Description__c: input.description,
@@ -180,8 +195,14 @@ export async function createCustomerCare(
     Case_Origin__c: input.caseOrigin ?? "Web",
   };
 
+  // Phase 2F-2: caller-supplied installationId still takes precedence
+  // (legacy escape hatch); otherwise fall back to the SOSL-resolved
+  // Job__c when available. Either way: omit Job_Number__c entirely
+  // when both are absent — never send it as null.
   if (input.installationId) {
     body.Job_Number__c = input.installationId;
+  } else if (matchedJob) {
+    body.Job_Number__c = matchedJob.id;
   }
   if (input.customerName) body.Customer_Name__c = input.customerName;
   if (input.email) body.Email__c = input.email;
@@ -233,10 +254,14 @@ export async function createCustomerCare(
   const id = json.id;
   const name = await fetchCustomerCareName(id, token);
 
+  console.log(
+    `[salesforce] createCustomerCare: case_created id=${id} name=${name ?? "(unavailable)"} sn=${input.sn} type=${input.type} matched=${matchedJob !== null} ${matchedJob ? `job=${matchedJob.name}(${matchedJob.id})` : "job=null"}`
+  );
+
   return {
     id,
     name,
-    matched: !!input.installationId,
+    matched: matchedJob !== null,
   };
 }
 
@@ -529,4 +554,144 @@ export async function uploadPhotoToCase(
   );
 
   return { success: false, error: classified };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2F-2 (Step #1): SOSL lookup SN → Job__c
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Escape special characters for SOSL FIND clauses.
+ *
+ * SOSL reserved characters that need escaping with backslash:
+ *   ?  &  |  !  {  }  [  ]  (  )  ^  ~  *  :  \  "  +  -
+ *
+ * This prevents both syntax errors (e.g. unmatched braces) and
+ * injection-style misbehavior from user-supplied SN strings.
+ */
+function escapeSosl(str: string): string {
+  return str.replace(/[\\?&|!{}\[\]()^~*:"+\-]/g, "\\$&");
+}
+
+/**
+ * Result of findJobBySN(): matched Job__c record, or null if
+ * unmatched / lookup failed.
+ */
+export interface JobLookupResult {
+  id: string; // Job__c Salesforce Record Id (a00...)
+  name: string; // Job__c.Name auto-number (e.g., "JOB-27763")
+}
+
+interface SfSoslSearchResponse {
+  searchRecords?: Array<{ Id: string; Name: string }>;
+}
+
+/**
+ * Look up Job__c (a.k.a. Installation) record by inverter/battery
+ * serial number using SOSL Search API.
+ *
+ * Why SOSL not SOQL:
+ *   Job__c.Inverter_Battery_Serials__c is Long Text Area (32k),
+ *   which CANNOT be used in any SOQL WHERE clause. SOSL Search
+ *   API is the platform's intended mechanism for searching
+ *   long-text content.
+ *
+ * Why this never throws:
+ *   This function is called from createCustomerCare() at ticket
+ *   submission time. If the SOSL lookup fails for any reason
+ *   (network, timeout, permission, SF rejection), we MUST still
+ *   let the Customer_Care__c case be created — just with
+ *   Job_Number__c left blank (unmatched). Support staff will
+ *   reconcile manually.
+ *
+ * @param sn          The inverter SN (typically from ShinePhone URL)
+ * @param accessToken OAuth bearer token (caller's responsibility
+ *                    to fetch/cache)
+ * @param instanceUrl SF instance base URL (e.g.,
+ *                    https://sunterra--dev.sandbox.my.salesforce.com)
+ * @returns           { id, name } if exactly 1 match,
+ *                    { id, name } of first if multiple matches
+ *                      (+ console.warn),
+ *                    null if 0 matches, network error, timeout,
+ *                      or any other failure
+ */
+export async function findJobBySN(
+  sn: string,
+  accessToken: string,
+  instanceUrl: string
+): Promise<JobLookupResult | null> {
+  const trimmedSn = sn?.trim();
+  if (!trimmedSn) {
+    return null;
+  }
+
+  const escapedSn = escapeSosl(trimmedSn);
+  const soslQuery = `FIND {${escapedSn}} IN ALL FIELDS RETURNING Job__c(Id, Name) LIMIT 5`;
+  const baseUrl = instanceUrl.replace(/\/$/, "");
+  const url = `${baseUrl}/services/data/${env.SALESFORCE_API_VERSION}/search/?q=${encodeURIComponent(
+    soslQuery
+  )}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const reason =
+      err instanceof Error && err.name === "AbortError"
+        ? "timeout (4s)"
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    console.error(
+      `[findJobBySN] sn="${trimmedSn}" network failure: ${reason}`
+    );
+    return null;
+  }
+  clearTimeout(timeoutId);
+
+  if (!res.ok) {
+    const snippet = await readBodySnippet(res);
+    console.error(
+      `[findJobBySN] sn="${trimmedSn}" HTTP ${res.status}: ${snippet}`
+    );
+    return null;
+  }
+
+  let data: SfSoslSearchResponse;
+  try {
+    data = (await res.json()) as SfSoslSearchResponse;
+  } catch (err) {
+    console.error(
+      `[findJobBySN] sn="${trimmedSn}" failed to parse JSON response:`,
+      err
+    );
+    return null;
+  }
+
+  const records = data.searchRecords ?? [];
+
+  if (records.length === 0) {
+    return null;
+  }
+
+  if (records.length > 1) {
+    console.warn(
+      `[findJobBySN] sn="${trimmedSn}" matched ${records.length} ` +
+        `Job__c records; SN should be globally unique. Using first match.`
+    );
+  }
+
+  const first = records[0];
+  return { id: first.Id, name: first.Name };
 }

@@ -1,6 +1,6 @@
 # Sunterra Support — Project Handover
 
-> Last updated: 2026-05-21 (Phase 2G complete; end-to-end photo upload verified)
+> Last updated: 2026-05-21 (Phase 2F-2 complete; SOSL SN-to-Job lookup live; Lily's 6 problem categories)
 >
 > This file is the single source of truth for project state.
 > Read this first when joining the project or starting a new chat session.
@@ -55,7 +55,8 @@ routes the case to a support engineer. The web app's responsibilities end at
              ▼
    ┌──────────────────────┐
    │ Salesforce sandbox   │  Customer_Care__c row created
-   │ + downstream Flow*   │  *Flow to be implemented by Jack (Phase 2I)
+   │                      │  (SN → Job__c lookup is now inline in
+   │                      │   createCustomerCare, see SOSL design below)
    └──────────────────────┘
 ```
 
@@ -99,23 +100,46 @@ ShinePhone passes the inverter SN in the URL. To match it to an Installation:
 - `Job__c.Inverter_Battery_Serials__c` is a Long Text Area (32k chars), storing
   multiple SNs concatenated (avg 5.6 SNs per Job).
 - **Salesforce forbids Long Text Area fields in SOQL `WHERE` clauses.**
-- **SOSL also rejects SNs containing `-`** (reserved as the Lucene `NOT`
-  operator), and a sizeable fraction of real-world inverter SNs include `-`.
+- **SOSL treats `-` as a reserved operator** (Lucene `NOT` syntax),
+  which would cause raw SOSL queries with `-`-containing SNs to fail.
+  Phase 2F-2's `escapeSosl()` helper handles this by escaping `-`
+  along with 16 other reserved characters before sending to SOSL.
 
 Therefore the design decision (finalised 2026-05-20):
 
-> **The web layer does NOT query SN → `Job__c`.**
+> **Phase 2F-2 update (2026-05-21):** The web layer now resolves
+> SN → `Job__c` synchronously at Customer_Care__c creation time
+> using Salesforce's **SOSL Search API** (not SOQL):
 >
-> 1. Web creates `Customer_Care__c` with the raw SN in
->    `Inverter_Battery_Serials__c` (plain text).
-> 2. `Job_Number__c` is left blank (lookup unset).
-> 3. A Salesforce Flow on the `Customer_Care__c` insert reconciles SN →
->    `Job__c` after-the-fact. Implementation is owned by Jack and scheduled
->    as Phase 2I.
-> 4. If Flow can't match: manual processing by the Sunterra support team.
-
-**Do not re-implement SN lookup on the web side.** Both SOQL and SOSL were
-prototyped and rejected. This decision is final.
+>     FIND {<SN>} IN ALL FIELDS RETURNING Job__c(Id, Name) LIMIT 5
+>
+> Why SOSL (not SOQL):
+> - `Job__c.Inverter_Battery_Serials__c` is a Long Text Area (32k);
+>   SF does not allow Long Text Area fields in SOQL `WHERE` clauses.
+> - SOSL Search API is platform-native for full-text search and
+>   handles whitespace/comma/semicolon-delimited SN lists in
+>   `Inverter_Battery_Serials__c` as separate index tokens.
+>
+> Flow (per submission):
+> 1. Web receives SN from ShinePhone URL token
+> 2. `findJobBySN()` in `lib/salesforce.ts` issues SOSL with 4s
+>    AbortController timeout
+> 3. Matched: payload includes `Job_Number__c = <Job__c.Id>`,
+>    response field `matched: true`
+> 4. Unmatched (0 results / network failure / timeout / any error):
+>    `Job_Number__c` omitted from payload (lookup unset),
+>    response field `matched: false`, Case still created
+>    successfully, support staff reconciles manually
+>
+> Key properties:
+> - Single SOSL call per submission, ~200-800ms in normal sandbox
+> - Failures are **silent to the customer**: no warning shown, no
+>   blocking of Case creation — this is a deliberate UX choice
+>   (customers from ShinePhone can't fix SN issues; surfacing it
+>   would confuse them and risk lost tickets)
+> - `escapeSosl()` (internal helper) escapes 17 SOSL reserved
+>   characters to prevent syntax errors / injection from
+>   user-controlled SN strings
 
 ## Salesforce environment
 
@@ -203,6 +227,23 @@ prototyped and rejected. This decision is final.
 - ✅ **End-to-end verified** in sandbox: Case-14068 with 1 photo
   attached + 1 deliberately oversized payload rejected, photoWarning
   correctly displayed.
+- ✅ **Phase 2F-2** — `lib/salesforce.ts`: `findJobBySN()` SOSL
+  lookup helper with 4s AbortController timeout. `createCustomerCare()`
+  invokes it on every submission; when matched, payload includes
+  `Job_Number__c = <Job__c.Id>`. Response `matched` field reflects
+  the lookup outcome (replacing the Phase 2F-1 placeholder semantics).
+  Independent test harness at `scripts/test-sosl-lookup.ts`
+  (4/4 PASS: happy path TESTINV0010 → JOB-27763, unmatched → null,
+  SOSL special chars → null without throw, whitespace short-circuit).
+- ✅ **Lily's problem categories** — `components/ticket-form.tsx`
+  PROBLEM_TYPES + `app/api/submit/route.ts` TYPE_MAP replaced with
+  Lily's 6 top-case categories: Battery Issue, Inverter Issue,
+  App Monitoring, System Performance, Installation Quality, Other
+  Issue. Each maps to an existing SF `Type__c` picklist value
+  (no SF metadata change required).
+- ✅ **End-to-end verified** (Phase 2F-2): Case-14070 created with
+  `Job_Number__c = JOB-27763` blue link; unmatched SN (GW2024XK8B72)
+  correctly produced empty `Job_Number__c` without blocking case.
 
 ## Next phases
 
@@ -235,23 +276,6 @@ prototyped and rejected. This decision is final.
 - **Replace placeholder "XXX" in /success warning banner** with the
   real Sunterra customer support email address (Jack to decide).
 
-### Phase 2I — SN → `Job__c` reconciliation Flow (not started)
-
-The web layer intentionally does not look up `Job__c` by SN
-(see Salesforce data model > SN matching). A Salesforce Flow must run
-on `Customer_Care__c` insert to:
-
-1. Read `Inverter_Battery_Serials__c` (raw SN string from the customer).
-2. Iterate over `Job__c` records and substring-match SN against
-   `Job__c.Inverter_Battery_Serials__c` (Long Text Area, ~5.6 SNs avg).
-3. If exactly one match: set `Customer_Care__c.Job_Number__c` to that
-   `Job__c.Id`.
-4. If zero or multiple matches: leave `Job_Number__c` blank; the case
-   is handled manually by the support team.
-
-Owner: Jack. Implemented declaratively in SF Setup (no Apex unless
-the substring loop hits CPU limits at production data volumes).
-
 ### Outstanding items (blocking or near-blocking)
 
 | Item                                                   | Owner    | Notes                                                |
@@ -261,7 +285,6 @@ the substring loop hits CPU limits at production data volumes).
 | Add Files related list to production `Customer_Care__c` page layout | Jack | Before Phase 2H cut-over; sandbox already has it |
 | Replace `XXX` placeholder in /success warning with real support email | Jack | Before Phase 2H cut-over |
 | Address Vercel 4.5MB body limit + 10s timeout for photo uploads | Jack | Before Phase 2H cut-over; see Phase 2H notes |
-| Implement SN → `Job__c` Flow on `Customer_Care__c` insert  | Jack | Phase 2I; the whole reason web doesn't do the lookup |
 | Verify production `Type__c` picklist values vs `TYPE_MAP`  | Jack | Before Phase 2H cut-over                             |
 | HMAC secret exchange with Growatt + test APK + cut-over    | Growatt  | Required before any real ShinePhone integration test |
 
@@ -286,8 +309,10 @@ Verified via SOQL on 2026-05-21 morning:
 
 The starred row (`Job_Number__c` blank) is the key design validation:
 unmatched SN correctly results in a null lookup, not an error, not a
-guess. The SN → `Job__c` reconciliation will be handled by the Phase 2I
-Flow.
+guess. Note: Case-14060 was created **before Phase 2F-2** — at the
+time, SN → `Job__c` reconciliation was planned as a downstream Flow.
+As of Phase 2F-2 (2026-05-21), reconciliation happens inline in
+`createCustomerCare()` via SOSL.
 
 ## Key environment variables
 
@@ -329,13 +354,17 @@ lib/
   hmac.ts                        HMAC-SHA256 sign/verify (timing-safe)
   sign-url.ts                    URL builder used by the dev test-link tool
   token.ts                       verifyToken(URLSearchParams) → reason-tagged result
-  salesforce.ts                  OAuth + token cache + createCustomerCare()
+  salesforce.ts                  OAuth + token cache + createCustomerCare() + uploadPhotoToCase() (Phase 2G) + findJobBySN() (Phase 2F-2 SOSL)
 
 types/installation.ts            Single canonical schema (InstallationData, UrlParams, …)
 
 scripts/
-  test-sf-connection.ts          One-off connectivity / schema probe (kept for re-runs)
-  test-sf-write.ts               One-off createCustomerCare smoke test (kept for re-runs)
+  test-sf-connection.ts          Connectivity / schema probe (kept for re-runs)
+  test-sf-write.ts               createCustomerCare smoke test (kept for re-runs)
+  test-photo-upload.ts           Phase 2G-1 single-photo upload helper test
+  test-partial-failure.ts        Phase 2G-3 partial-failure path regression test
+  test-sosl-lookup.ts            Phase 2F-2 SOSL findJobBySN test (4 cases)
+  fixtures/                      Test fixtures (gitignored except .gitkeep)
 
 docs/
   handover.md                    ← this file
@@ -397,19 +426,58 @@ Carried forward from previous handover, updated to today's state:
   are kept for regression testing of partial-failure path**. Can
   be removed if regression suite is replaced with proper integration
   tests. `broken.jpg` is gitignored (49 bytes of ASCII).
+- **SOSL index lag is a known Salesforce platform behavior**:
+  Newly-created or recently-edited `Job__c` records may take
+  5 seconds to ~2 minutes to appear in SOSL search results
+  (sandbox; production typically faster but no SLA). Impact:
+  if a customer activates installation on ShinePhone and submits
+  a support ticket within seconds, `findJobBySN()` may return
+  null even though the Job exists. Mitigation: the unmatched
+  branch already handles this gracefully (Case still created,
+  support reconciles), and in practice ShinePhone activation
+  happens days/weeks before any support ticket.
+- **SOSL `FIND` does not handle reserved tokens** (AND, OR, NOT, TO):
+  `escapeSosl()` escapes 17 reserved characters but not these
+  English words. If a customer's SN happens to be exactly "AND"
+  or "OR" (extremely unlikely for Growatt SNs which are
+  alphanumeric), the SOSL query would fail. Out of scope to
+  mitigate.
+- **`tsconfig.json` is silently rewritten by Next.js 16 during
+  `npm run build`**: Discovered during Phase 2F-2 Step #2 — Next.js
+  16.2.6 + Turbopack drops `strict: true` and the `@/*` path alias
+  when bootstrapping. Cursor reverted it with
+  `git checkout HEAD -- tsconfig.json` and build then passed.
+  Likely related to the existing "multiple lockfiles" warning
+  (root `/Users/liushize/package-lock.json` confuses Next's
+  workspace root detection). Before Phase 2H production launch:
+  delete the stray root lockfile, or add `outputFileTracingRoot`
+  in `next.config.js` to pin the workspace root explicitly.
+- **Two `case_created` log lines per submission**: Phase 2F-2
+  added `[salesforce] createCustomerCare: case_created ...` inside
+  `lib/salesforce.ts` (with `job=NAME(ID)` enrichment), keeping
+  the existing `[/api/submit] case_created: ...` in route.ts.
+  Both lines contain "case_created" substring — log searches
+  will return 2× results. Intentional: different prefixes carry
+  different info.
 - **Sandbox test cases need manual cleanup** (multiple records under
   the Integration User, accumulated from Phase 2F + Phase 2G testing).
   Customer_Care__c records to delete in SF UI:
   - `a1y8s00000EcTovAAF` (Phase 2F early test)
   - `a1y8s00000EcTqXAAV` (Phase 2F early test)
   - `a1y8s00000EcTtlAAF` (Phase 2F early test)
-  - `a1y8s00000EcUhlAAF` / Case-14060 (Phase 2F final verification,
-    keep until Phase 2I uses it as reference)
+  - `a1y8s00000EcUhlAAF` / Case-14060 (Phase 2F final verification;
+    can be deleted at Jack's discretion — Phase 2F-2 has its own
+    verification baseline at Case-14070)
   - Case-14061 (caseNumber display rollout test)
   - Case-14063 (Phase 2G-2 end-to-end test)
   - Case-14066, Case-14067 (Phase 2G-3 failure path testing
     — SF accepted any bytes as image content, see tech debt below)
   - Case-14068 (Phase 2G-3 partial-failure final verification)
+  - Case-14070 (Phase 2F-2 happy path E2E test — SN TESTINV0010
+    matched to JOB-27763)
+  - Any Case created with SN=GW2024XK8B72 during Phase 2F-2 unmatched
+    testing (Job_Number__c empty by design; Auto Number value
+    depends on testing order)
 
   ContentVersion records (file attachments) will be deleted
   automatically when their parent Customer_Care__c is deleted.
@@ -444,7 +512,8 @@ This is a multi-party project. Roles:
   integration.
 - **Salesforce admin** — Jack. Owns the SF data model for this project:
   configures the External Client App, Permission Sets, Integration User,
-  picklist values, and will implement the SN → `Job__c` Flow in Phase 2I.
+  picklist values; implemented the SN → `Job__c` SOSL lookup in
+  Phase 2F-2 (replacing the originally-planned Phase 2I Flow).
   Historical baseline (the `Customer_Care__c` object and most of its
   picklist values) was set up years ago by Lily Zhou; she is no longer
   hands-on.
@@ -467,6 +536,13 @@ Communication loop:
 2. Coding AI executes, reports back exactly in that format.
 3. Tech coordinator reviews the report → either approves the next phase or
    feeds the report back to the planning AI for revision.
+
+> **Design discipline reminder:** When new technical approaches
+> supersede prior designs (e.g., Phase 2F-2 replacing the planned
+> Phase 2I Flow), update this handover *before* declaring the
+> phase complete. Decisions that are not documented are decisions
+> that future contributors (including future Claude sessions)
+> will misinterpret.
 
 When you (a future planning AI) write Cursor prompts:
 

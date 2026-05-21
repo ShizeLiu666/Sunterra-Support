@@ -80,12 +80,12 @@ interface SubmitRequestBody {
 const MAX_PHOTOS = 5;
 
 const TYPE_MAP: Record<string, string> = {
-  system_not_working: "Growatt inverter Issue",
-  warning_or_error: "Inverter Issue",
-  cannot_see_data: "WiFi Issue",
-  low_output: "Growatt inverter Issue",
-  battery_issue: "Growatt Battery issue",
-  other: "General Inquiries",
+  battery_issue:        "Battery issue",
+  inverter_issue:       "Inverter Issue",
+  app_monitoring:       "WiFi Issue",
+  system_performance:   "High bill",
+  installation_quality: "Installation Quality Control",
+  other:                "General Inquiries",
 };
 const DEFAULT_SF_TYPE = "General Inquiries";
 
