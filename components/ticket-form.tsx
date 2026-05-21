@@ -28,7 +28,7 @@ interface TicketFormProps {
 
 interface SubmitResponseBody {
   success?: boolean;
-  caseId?: string;
+  caseNumber?: string;
   matched?: boolean;
   error?: string;
 }
@@ -222,7 +222,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
         !res.ok ||
         !data ||
         data.success !== true ||
-        typeof data.caseId !== "string"
+        typeof data.caseNumber !== "string"
       ) {
         const message =
           (data && typeof data.error === "string" && data.error) ||
@@ -232,7 +232,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
         return;
       }
 
-      router.push(`/success?caseId=${encodeURIComponent(data.caseId)}`);
+      router.push(`/success?caseNumber=${encodeURIComponent(data.caseNumber)}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Network error");
       setIsSubmitting(false);

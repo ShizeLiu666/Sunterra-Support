@@ -17,7 +17,10 @@ import {
  * Flow reconciles SN → Job__c.
  *
  * Response shapes:
- *   200 { success: true, caseId, matched }
+ *   200 { success: true, caseNumber, matched }
+ *     - caseNumber is the customer-facing Auto Number Name (e.g. "Case-14060");
+ *       if the post-create Name lookup failed it falls back to the 18-char
+ *       Record ID so the client always has *some* reference to display.
  *   400 { success: false, error: "invalid request body" }
  *   401 { success: false, error: "invalid token" }
  *   500 { success: false, error: <message> }
@@ -223,12 +226,13 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const result = await createCustomerCare(sfInput);
+    const caseNumber = result.name ?? result.id;
     console.log(
-      `[/api/submit] case_created: caseId=${result.caseId} sn=${body.token.sn} type=${sfType} matched=${result.matched}`
+      `[/api/submit] case_created: id=${result.id} name=${result.name ?? "(unavailable)"} sn=${body.token.sn} type=${sfType} matched=${result.matched}`
     );
     return NextResponse.json({
       success: true,
-      caseId: result.caseId,
+      caseNumber,
       matched: result.matched,
     });
   } catch (err) {

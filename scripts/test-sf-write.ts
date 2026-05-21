@@ -118,14 +118,16 @@ async function main(): Promise<void> {
     if (!r.ok) {
       fail(name, `unexpected throw: ${r.error.message}`);
     } else {
-      console.log(`   → caseId: ${r.value.caseId}, matched: ${r.value.matched}`);
-      createdCaseIds.push(r.value.caseId);
+      console.log(
+        `   → id: ${r.value.id}, name: ${r.value.name ?? "(unavailable)"}, matched: ${r.value.matched}`
+      );
+      createdCaseIds.push(r.value.id);
       if (r.value.matched !== false) {
         fail(name, `expected matched=false, got matched=${r.value.matched}`);
-      } else if (typeof r.value.caseId !== "string" || r.value.caseId.length < 15) {
-        fail(name, `bad caseId: ${JSON.stringify(r.value.caseId)}`);
+      } else if (typeof r.value.id !== "string" || r.value.id.length < 15) {
+        fail(name, `bad id: ${JSON.stringify(r.value.id)}`);
       } else {
-        pass(name, `created ${r.value.caseId}, matched=false`);
+        pass(name, `created ${r.value.id} (name=${r.value.name ?? "n/a"}), matched=false`);
       }
     }
   }
@@ -150,11 +152,13 @@ async function main(): Promise<void> {
       })
     );
     if (r.ok) {
-      // If SF happened to accept it (extremely unlikely), record the caseId
+      // If SF happened to accept it (extremely unlikely), record the id
       // for cleanup and mark the test as a failure.
-      console.log(`   → caseId: ${r.value.caseId}, matched: ${r.value.matched}`);
-      createdCaseIds.push(r.value.caseId);
-      fail(name, `SF accepted a fake Job ID; expected rejection. caseId=${r.value.caseId}`);
+      console.log(
+        `   → id: ${r.value.id}, name: ${r.value.name ?? "(unavailable)"}, matched: ${r.value.matched}`
+      );
+      createdCaseIds.push(r.value.id);
+      fail(name, `SF accepted a fake Job ID; expected rejection. id=${r.value.id}`);
     } else {
       const msg = r.error.message;
       console.log(`   → caught error: ${msg}`);
@@ -194,9 +198,9 @@ async function main(): Promise<void> {
   //   );
   //   if (!r.ok) fail(name, `unexpected throw: ${r.error.message}`);
   //   else {
-  //     createdCaseIds.push(r.value.caseId);
+  //     createdCaseIds.push(r.value.id);
   //     if (r.value.matched !== true) fail(name, `expected matched=true, got ${r.value.matched}`);
-  //     else pass(name, `created ${r.value.caseId}, matched=true`);
+  //     else pass(name, `created ${r.value.id}, matched=true`);
   //   }
   // }
   header("Test 2.c: createCustomerCare with real Job ID (SKIPPED — Jack must supply a real Job__c Id)");

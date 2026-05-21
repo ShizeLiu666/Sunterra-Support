@@ -1,6 +1,12 @@
 /**
  * Shown after a Customer_Care__c record has been created in Salesforce.
- * Receives `?caseId=<SF record id>` from the ticket-form redirect.
+ * Receives `?caseNumber=<Case-XXXXX>` from the ticket-form redirect.
+ *
+ * When the post-create Name lookup in /api/submit succeeds, caseNumber is
+ * the human-friendly Auto Number (e.g. "Case-14060") and is displayed as
+ * "Your case number". When it fails, caseNumber is the 18-char Record ID
+ * and is displayed as "Reference" with a softer "please save this" cue so
+ * the customer still has something to quote back at support.
  *
  * Style intentionally mirrors /expired: same container, same vertical rhythm,
  * same brand colors. ShinePhone deep-link return is deferred to Phase 2G.
@@ -12,12 +18,25 @@ export const metadata = {
 };
 
 interface SuccessPageProps {
-  searchParams: Promise<{ caseId?: string }>;
+  searchParams: Promise<{ caseNumber?: string }>;
+}
+
+/**
+ * Heuristic: SF Auto Number for Customer_Care__c is "Case-XXXXX"; the
+ * Record ID fallback is 15–18 alphanumeric characters with no hyphen.
+ * We treat anything that doesn't start with "Case-" as the fallback.
+ */
+function looksLikeRecordIdFallback(value: string): boolean {
+  return !value.startsWith("Case-");
 }
 
 export default async function SuccessPage({ searchParams }: SuccessPageProps) {
   const params = await searchParams;
-  const caseId = typeof params.caseId === "string" ? params.caseId : undefined;
+  const caseNumber =
+    typeof params.caseNumber === "string" && params.caseNumber.length > 0
+      ? params.caseNumber
+      : undefined;
+  const isFallback = caseNumber ? looksLikeRecordIdFallback(caseNumber) : false;
 
   return (
     <main className="min-h-screen bg-white flex items-center justify-center p-6 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
@@ -48,10 +67,17 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
           24 hours.
         </p>
 
-        {caseId && (
+        {caseNumber && !isFallback && (
           <p className="text-sm text-gray-500 mb-6">
-            Reference:{" "}
-            <code className="font-mono text-sunterra-dark/80">{caseId}</code>
+            Your case number:{" "}
+            <code className="font-mono text-sunterra-dark/80">{caseNumber}</code>
+          </p>
+        )}
+
+        {caseNumber && isFallback && (
+          <p className="text-sm text-gray-500 mb-6">
+            Reference (please save this):{" "}
+            <code className="font-mono text-sunterra-dark/80">{caseNumber}</code>
           </p>
         )}
 

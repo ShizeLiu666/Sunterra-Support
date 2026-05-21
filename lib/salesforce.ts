@@ -49,6 +49,10 @@ interface SfCreateResponse {
   errors?: unknown[];
 }
 
+interface SfNameResponse {
+  Name?: string;
+}
+
 function instanceBaseUrl(): string {
   return env.SALESFORCE_INSTANCE_URL.replace(/\/$/, "");
 }
@@ -151,16 +155,21 @@ export interface CreateCustomerCareInput {
 /**
  * Create a Customer_Care__c record in Salesforce.
  *
- * Returns { caseId, matched }, where matched===true iff an installationId
- * was supplied (i.e., the SN already resolved to a Job__c upstream).
+ * Returns { id, name, matched }:
+ *   - id      — Salesforce Record ID (18-char), API-side identifier.
+ *   - name    — Auto Number `Name` field (e.g. "Case-14060"), the
+ *               customer-facing reference. `null` if the post-create GET
+ *               failed; the create itself is still considered successful.
+ *   - matched — true iff an installationId was supplied (the SN already
+ *               resolved to a Job__c upstream).
  *
  * Fields with undefined/null values are omitted from the POST body so SF's
  * defaults stay in effect. Specifically: Status__c and Priority__c are
- * never sent — they rely on SF defaults ('New' / SF-default priority).
+ * never sent — they rely on SF defaults.
  */
 export async function createCustomerCare(
   input: CreateCustomerCareInput
-): Promise<{ caseId: string; matched: boolean }> {
+): Promise<{ id: string; name: string | null; matched: boolean }> {
   const token = await getAccessToken();
 
   const body: Record<string, string> = {
@@ -221,8 +230,65 @@ export async function createCustomerCare(
     throw new Error("Salesforce Customer_Care__c create: response missing id");
   }
 
+  const id = json.id;
+  const name = await fetchCustomerCareName(id, token);
+
   return {
-    caseId: json.id,
+    id,
+    name,
     matched: !!input.installationId,
   };
+}
+
+/**
+ * Fetch the `Name` (Auto Number, e.g. "Case-14060") of a freshly-created
+ * Customer_Care__c record. This is the customer-facing reference; we display
+ * it on the /success page instead of the opaque 18-char Record ID.
+ *
+ * Failure is non-fatal: we log via console.error and return null, letting
+ * the caller fall back to the Record ID. The Case itself is already created
+ * at this point, so we never want a display-only lookup to roll it back.
+ *
+ * Reuses the cached OAuth token from getAccessToken(); does not refresh it.
+ */
+async function fetchCustomerCareName(
+  recordId: string,
+  token: string
+): Promise<string | null> {
+  const url = `${instanceBaseUrl()}/services/data/${env.SALESFORCE_API_VERSION}/sobjects/Customer_Care__c/${encodeURIComponent(
+    recordId
+  )}?fields=Name`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const snippet = await readBodySnippet(res, 300);
+      console.error(
+        `[salesforce] fetchCustomerCareName: HTTP ${res.status} ${res.statusText} for ${recordId} — ${snippet}`
+      );
+      return null;
+    }
+
+    const json = (await res.json()) as SfNameResponse;
+    if (typeof json.Name !== "string" || json.Name.length === 0) {
+      console.error(
+        `[salesforce] fetchCustomerCareName: response missing Name for ${recordId}`
+      );
+      return null;
+    }
+
+    return json.Name;
+  } catch (err) {
+    console.error(
+      `[salesforce] fetchCustomerCareName: network error for ${recordId} — ${(err as Error).message}`
+    );
+    return null;
+  }
 }
