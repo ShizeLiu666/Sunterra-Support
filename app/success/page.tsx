@@ -77,7 +77,7 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
 
         <p className="text-gray-600 mb-6 leading-relaxed">
           Thanks — we&apos;ve received your support request and will respond within
-          24 hours.
+          1 business day.
         </p>
 
         {caseNumber && !isFallback && (

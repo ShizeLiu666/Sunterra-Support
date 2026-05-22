@@ -87,12 +87,12 @@ const DESCRIPTION_DANGER_AT = 490;
 
 const MAX_PHOTOS = 5;
 const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024; // selection-time limit;
-// compression brings it under 0.8MB later
+// compression brings it under 0.5MB later
 const MAX_PHOTO_SIZE_LABEL = "15MB";
 
 // Compression options for browser-image-compression (Phase 2G-2)
 const COMPRESSION_OPTIONS = {
-  maxSizeMB: 0.8,
+  maxSizeMB: 0.5,
   maxWidthOrHeight: 1600,
   useWebWorker: true,
   fileType: "image/jpeg" as const,
@@ -525,7 +525,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
                   : "Submit ticket"}
           </button>
           <p className="mt-2 text-center text-xs text-sunterra-dark/60">
-            We&apos;ll respond within 24 hours
+            We&apos;ll respond within 1 business day
           </p>
         </div>
       </div>

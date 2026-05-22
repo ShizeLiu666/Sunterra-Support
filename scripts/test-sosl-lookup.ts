@@ -11,11 +11,13 @@
  * Verification:
  *   Expect 4/4 PASS and exit code 0.
  *
- * Data dependency (Lily-prepared sandbox fixture):
- *   - Job__c record JOB-27763 must exist in the sandbox with
- *     Inverter_Battery_Serials__c containing the token "TESTINV0010".
- *     If Test 1 starts failing, check whether that record was deleted
- *     or its SN field was edited.
+ * Data dependency (Partial Copy `sunterra--test` real-data baseline):
+ *   - Job__c record JOB-26359 must exist in the sandbox with
+ *     Inverter_Battery_Serials__c containing the token "YRP2FXA0C6".
+ *     This is real production-sample data (verified via Case-14018
+ *     in the SF UI). If Test 1 starts failing, check whether the
+ *     Job/SN association in production has changed since the last
+ *     Partial Copy refresh.
  *
  * Safety:
  *   - .env.local must be present; this script loads it into process.env.
@@ -199,23 +201,23 @@ async function main(): Promise<void> {
 
   const cases: TestCase[] = [
     {
-      name: "Test 1: Happy path — SN=TESTINV0010 → JOB-27763",
-      input: "TESTINV0010",
-      expect: { kind: "match", name: "JOB-27763" },
+      name: "Test 1: Happy path — SN=YRP2FXA0C6 → JOB-26359 (real prod data)",
+      input: "YRP2FXA0C6",
+      expect: { kind: "match", name: "JOB-26359" },
     },
     {
       name: "Test 2: Unmatched SN → null",
-      input: "NONEXISTENT_SN_999",
+      input: "SUNTERRACLAUDETEST404XYZ",
       expect: { kind: "null" },
     },
     {
-      name: "Test 3: SOSL special characters in SN — should not throw",
-      input: "TEST{INV}*WITH:SPECIAL+CHARS",
+      name: "Test 3: SOSL hyphens in SN — should not throw",
+      input: "YRP-2FXA-0C6",
       expect: { kind: "null" },
     },
     {
-      name: "Test 4: Whitespace-only input — short-circuits to null",
-      input: "   ",
+      name: "Test 4: Empty input — short-circuits to null",
+      input: "",
       expect: { kind: "null" },
     },
   ];
