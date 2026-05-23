@@ -26,7 +26,7 @@ When ShinePhone redirects users to the support web, parameters are passed as
 **flat camelCase query-string fields** (no Base64 envelope, no JSON blob).
 
 ```
-https://support.sunterra.com.au/?sn=<serial>&timestamp=<unix>&sign=<hmac>
+https://sunterra-support.vercel.app/?sn=<serial>&timestamp=<unix>&sign=<hmac>
     &name=<...>&email=<...>&address=<...>&inverterModel=<...>&language=<...>
 ```
 

@@ -7,6 +7,25 @@
 > It is intentionally self-contained — you should be able to understand the
 > project without opening any other file.
 
+> ⚠️ **TEMPORARY PRODUCTION URL**
+>
+> Current production URL: `https://sunterra-support.vercel.app/`
+> Target production URL:  `https://support.sunterra.com.au/`
+>
+> Reason: Cloudflare DNS for `sunterra.com.au` is managed by Lily.
+> Pending: Lily to add CNAME record on Cloudflare → cutover to
+> `support.sunterra.com.au`.
+>
+> When cutover happens, the following must update together:
+>   1. Vercel: add `support.sunterra.com.au` as custom domain
+>   2. Growatt: update HMAC signing URL host from
+>      `sunterra-support.vercel.app` → `support.sunterra.com.au`
+>   3. `docs/integration-spec.md` — revert the URL example in the
+>      signed-URL contract section back to `support.sunterra.com.au`
+>   4. `docs/handover.md` Phase 2H section — revert the production
+>      deployment bullet back to `custom domain support.sunterra.com.au`
+>   5. Remove this NOTE block
+
 ## What this project is
 
 Sunterra is an Australian rooftop-solar installer with ~3,000 systems deployed,
@@ -249,7 +268,7 @@ Therefore the design decision (finalised 2026-05-20):
 
 ### Phase 2H — Production deployment (not started)
 
-- Vercel project + custom domain `support.sunterra.com.au`
+- Vercel project + Vercel deployment URL (temporary): `sunterra-support.vercel.app`
 - Switch SF env vars from sandbox to production
 - Verify production `Type__c` picklist values match the web's
   `TYPE_MAP`
