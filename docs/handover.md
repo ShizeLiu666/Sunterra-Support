@@ -1,29 +1,33 @@
 # Sunterra Support — Project Handover
 
-> Last updated: 2026-05-21 (Phase 2F-2 complete; SOSL SN-to-Job lookup live; Lily's 6 problem categories)
+> Last updated: 2026-05-24 (Production live on `sunterra-support.vercel.app`; DNS cutover to `support.sunterra.com.au` pending Lily/Cloudflare)
 >
 > This file is the single source of truth for project state.
 > Read this first when joining the project or starting a new chat session.
 > It is intentionally self-contained — you should be able to understand the
 > project without opening any other file.
 
-> ⚠️ **TEMPORARY PRODUCTION URL**
+> ⚠️ **PRODUCTION LIVE — DNS CUTOVER PENDING**
 >
-> Current production URL: `https://sunterra-support.vercel.app/`
-> Target production URL:  `https://support.sunterra.com.au/`
+> Production URL (active):   `https://sunterra-support.vercel.app/`
+> Target URL (DNS-pending):  `https://support.sunterra.com.au/`
 >
-> Reason: Cloudflare DNS for `sunterra.com.au` is managed by Lily.
-> Pending: Lily to add CNAME record on Cloudflare → cutover to
-> `support.sunterra.com.au`.
+> Status as of 2026-05-24:
+>   ✅ Vercel project deployed; production Salesforce wired up
+>   ✅ End-to-end verified on production (Case-14083/14084/14085, all deleted)
+>   ⏳ DNS cutover: Lily to add CNAME on Cloudflare (sunterra.com.au zone)
+>   ⏳ Growatt HMAC integration: contract not yet aligned — Growatt's
+>      current proposal sends only `{ name, timestamp }` and is missing
+>      `sn`, which the web app requires for SN → Job__c lookup
 >
-> When cutover happens, the following must update together:
+> When DNS cutover happens, the following must update together:
 >   1. Vercel: add `support.sunterra.com.au` as custom domain
->   2. Growatt: update HMAC signing URL host from
+>   2. Growatt: switch HMAC signing host from
 >      `sunterra-support.vercel.app` → `support.sunterra.com.au`
->   3. `docs/integration-spec.md` — revert the URL example in the
->      signed-URL contract section back to `support.sunterra.com.au`
->   4. `docs/handover.md` Phase 2H section — revert the production
->      deployment bullet back to `custom domain support.sunterra.com.au`
+>   3. `docs/integration-spec.md` — flip the URL example back to
+>      `support.sunterra.com.au`
+>   4. `docs/handover.md` Production Configuration section —
+>      flip the Production URL value
 >   5. Remove this NOTE block
 
 ## What this project is
@@ -73,8 +77,8 @@ routes the case to a support engineer. The web app's responsibilities end at
              │     with FirstPublishLocationId = case Id)
              ▼
    ┌──────────────────────┐
-   │ Salesforce sandbox   │  Customer_Care__c row created
-   │                      │  (SN → Job__c lookup is now inline in
+   │ Salesforce           │  Customer_Care__c row created
+   │ (sandbox + prod)     │  (SN → Job__c lookup is now inline in
    │                      │   createCustomerCare, see SOSL design below)
    └──────────────────────┘
 ```
@@ -89,7 +93,7 @@ routes the case to a support engineer. The web app's responsibilities end at
 - **Salesforce REST API** via OAuth 2.0 **Client Credentials Flow**
   (External Client App, no username/password)
 - **Node `crypto`** for HMAC-SHA256
-- **Vercel** as deployment target (not yet provisioned)
+- **Vercel** for deployment (production live since 2026-05-24)
 
 No client-side data libraries (no SWR / React Query), no form library, no UI
 kit. Everything is hand-rolled — keep it that way unless you have a strong
@@ -162,7 +166,7 @@ Therefore the design decision (finalised 2026-05-20):
 
 ## Salesforce environment
 
-### Sandbox (development — what we use)
+### Sandbox (development + pre-prod testing)
 
 - URL: `https://sunterra--dev.sandbox.my.salesforce.com`
 - Type: Developer Sandbox (200 MB, free)
@@ -172,9 +176,19 @@ Therefore the design decision (finalised 2026-05-20):
 ### Production
 
 - URL: `https://sunterra.my.salesforce.com`
-- **Do not touch.** No code in this repo currently points at production.
+- **Live as of 2026-05-24.** Org ID `00D28000000s1H5`. The Vercel
+  production deployment points at this org. Full configuration
+  (External Client App, Permission Set, Run-As User, page layout)
+  is documented in the **Production Configuration** section below.
+- **Do not run write tests against production unless they're
+  cleanup-tracked** — the integration user lacks Delete on
+  `Customer_Care__c`, so test cases require an admin to remove.
 
-### External Client App
+### External Client App (sandbox)
+
+> Production has a separate External Client App with the same name
+> but a different consumer key/secret pair. Production values are
+> documented in the **Production Configuration** section below.
 
 - Name: `Sunterra Support Web App`
 - API name: `Sunterra_Support_Web_App`
@@ -185,7 +199,11 @@ Therefore the design decision (finalised 2026-05-20):
 - Note: the Integration User cannot log in via the SF UI (API-only restriction)
   — this is expected.
 
-### Permission Set
+### Permission Set (sandbox)
+
+> Production has an equivalent Permission Set with the same name and
+> shape; see **Production Configuration** for the production
+> assignment + Delete-permission note.
 
 - Name: `Sunterra Support API Access`
 - Assigned to the Integration User above
@@ -196,7 +214,8 @@ Therefore the design decision (finalised 2026-05-20):
 
 ### API version
 
-- `v62.0` — set via `SALESFORCE_API_VERSION` in `.env.local`
+- `v62.0` — set via `SALESFORCE_API_VERSION` in `.env.local` (same
+  version configured in Vercel Production env).
 
 ### Picklist values verified on 2026-05-21
 
@@ -206,6 +225,82 @@ Therefore the design decision (finalised 2026-05-20):
   The web app sends `'Open'` (the default), which is valid. Earlier
   handover notes claiming `'New'` was the correct initial value were
   incorrect — there is no `'New'` value in this picklist.
+
+## Production Configuration
+
+Production deployment completed 2026-05-24. All facts below are the
+current state of production; sandbox equivalents are in the
+**Salesforce environment** section above.
+
+### Salesforce production org
+
+- URL: `https://sunterra.my.salesforce.com`
+- Org ID: `00D28000000s1H5`
+- API version: `v62.0` (same as sandbox)
+
+### Production External Client App
+
+- Name: `Sunterra Support Web App`
+- API name: `Sunterra_Support_Web_App`
+- OAuth flow: **Client Credentials** (same as sandbox)
+- Run As: `jack.liu@sunterra.com.au.prod`
+- Profile: `Salesforce API Only System Integrations`
+- License: `Salesforce Integration`
+
+### Production Permission Set
+
+- Name: `Sunterra Support API Access` (same name as sandbox; different org)
+- Object permissions:
+  - `Customer_Care__c` — Read / Create / Edit (no Delete — intentional
+    security posture; integration user cannot delete cases. Confirmed
+    by curl test on 2026-05-24: DELETE returned
+    `INSUFFICIENT_ACCESS_OR_READONLY` as expected.)
+  - `Job__c` (label "Installation") — Read on all fields
+- Field-level security: full read/edit on all `Customer_Care__c` fields
+  the web layer touches.
+
+### Production page layout
+
+- `Customer_Care__c` page layout has the **Files related list** added
+  (2026-05-24). Photo attachments uploaded via ContentVersion will
+  surface there.
+
+### Production deployment (Vercel)
+
+- Project: Vercel (free tier currently)
+- URL: `https://sunterra-support.vercel.app` (Vercel-issued; temporary
+  until Lily configures Cloudflare CNAME for
+  `support.sunterra.com.au`)
+- Environment variables set in **Vercel → Settings → Environment
+  Variables → Production scope**:
+  - `HMAC_SECRET`
+  - `TOKEN_TTL_SECONDS`
+  - `SALESFORCE_CLIENT_ID`
+  - `SALESFORCE_CLIENT_SECRET`
+  - `SALESFORCE_INSTANCE_URL` = `https://sunterra.my.salesforce.com`
+  - `SALESFORCE_API_VERSION` = `v62.0`
+- Vercel-managed vars NOT set manually: `NODE_ENV`, `VERCEL_ENV`,
+  `PORT`, `CI`.
+
+### Production end-to-end verification (2026-05-24)
+
+- Three test cases created and deleted on 2026-05-24:
+  - `Case-14083` — curl POST to
+    `/services/data/v62.0/sobjects/Customer_Care__c`
+    ("Production OAuth test")
+  - `Case-14084` — web form submission via
+    `https://sunterra-support.vercel.app/` ("Support: Battery issue")
+  - `Case-14085` — web form submission, second pass
+    ("Support: Inverter Issue")
+- All three deleted via SF UI by admin user (integration user lacks
+  Delete on `Customer_Care__c` by design).
+- `Type__c` picklist values verified across these cases: both
+  "Battery issue" and "General Inquiries" wrote successfully — no
+  production picklist mismatch.
+- SOSL `findJobBySN()` validation against real production data:
+  **not yet performed** — only confirmed with sandbox fixtures. Will
+  be observed when real Growatt traffic begins (tracked as P1 in
+  Outstanding items).
 
 ## Completed phases
 
@@ -263,49 +358,25 @@ Therefore the design decision (finalised 2026-05-20):
 - ✅ **End-to-end verified** (Phase 2F-2): Case-14070 created with
   `Job_Number__c = JOB-27763` blue link; unmatched SN (GW2024XK8B72)
   correctly produced empty `Job_Number__c` without blocking case.
+- ✅ **Phase 2H** — Production deployment (2026-05-24): Vercel project
+  provisioned, 6 production env vars configured, production SF External
+  Client App + Permission Set + Files related list configured by Jack.
+  End-to-end verified via Case-14083/14084/14085 (curl + web form,
+  both paths succeeded; all three cases deleted post-verification).
+  Production `Type__c` picklist verified via Case-14084 ("Battery issue")
+  and Case-14083 ("General Inquiries") — both wrote successfully.
 
-## Next phases
+## Outstanding items (blocking or near-blocking)
 
-### Phase 2H — Production deployment (not started)
-
-- Vercel project + Vercel deployment URL (temporary): `sunterra-support.vercel.app`
-- Switch SF env vars from sandbox to production
-- Verify production `Type__c` picklist values match the web's
-  `TYPE_MAP`
-- **Production Salesforce config** (Jack to replicate from sandbox):
-  - Create matching `Sunterra Support API Access` Permission Set
-    in production (Customer_Care__c + Job__c + Files implicit)
-  - Verify production `Customer_Care__c` page layout includes the
-    Files related list. Sandbox needed this added (Lily's 2018
-    layout didn't have it). If production also lacks it, add it.
-  - Verify Integration User profile is `Salesforce API Only System
-    Integrations` and has the new Permission Set assigned.
-- **Vercel platform constraints to address before launch:**
-  - Default sync function body limit is 4.5MB. 5 photos × 0.8MB
-    compressed × 1.37 base64 inflation ≈ 5.5MB worst case — could
-    hit 413 in production. Options: (a) reduce client-side
-    `maxSizeMB` to 0.5; (b) switch /api/submit to multipart/form-data
-    + Edge runtime; (c) batch uploads through a separate /api/upload
-    endpoint.
-  - Default sync function timeout is 10s. Serial upload of 5 photos
-    can take 5-10s under network jitter (each SF Files API call
-    ~800ms-2s). Options: (a) upgrade to Vercel Pro Edge (~5min
-    timeout); (b) limit concurrent uploads to 2-3 instead of fully
-    serial; (c) fire-and-forget photo uploads after Case is created.
-- **Replace placeholder "XXX" in /success warning banner** with the
-  real Sunterra customer support email address (Jack to decide).
-
-### Outstanding items (blocking or near-blocking)
-
-| Item                                                   | Owner    | Notes                                                |
-|--------------------------------------------------------|----------|------------------------------------------------------|
-| Verify field-by-field mapping on case `a1y8s00000EcUhlAAF` | Jack | ✅ Done 2026-05-21 — all 12 fields PASS (incl. Job_Number__c blank, Type__c=General Inquiries) |
-| Add `'ShinePhone'` to `Case_Origin__c` picklist            | Jack | Sandbox + production both, before Growatt cut-over   |
-| Add Files related list to production `Customer_Care__c` page layout | Jack | Before Phase 2H cut-over; sandbox already has it |
-| Replace `XXX` placeholder in /success warning with real support email | Jack | Before Phase 2H cut-over |
-| Address Vercel 4.5MB body limit + 10s timeout for photo uploads | Jack | Before Phase 2H cut-over; see Phase 2H notes |
-| Verify production `Type__c` picklist values vs `TYPE_MAP`  | Jack | Before Phase 2H cut-over                             |
-| HMAC secret exchange with Growatt + test APK + cut-over    | Growatt  | Required before any real ShinePhone integration test |
+| Priority | Item                                                                       | Owner                       | Notes                                                                                                                                                                                                                                                                                                                                |
+|----------|----------------------------------------------------------------------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **P0**   | DNS cutover: `support.sunterra.com.au` CNAME to Vercel                     | Lily                        | Cloudflare zone (`sunterra.com.au`) managed by Lily. Pending until Monday (post-weekend office network change). Cutover steps in the top NOTE block.                                                                                                                                                                                  |
+| **P0**   | Growatt HMAC integration contract alignment                                | Growatt + tech coordinator  | Growatt's current proposal sends only `{ name, timestamp }`. **The web app requires `sn`** for SN → Job__c lookup (Phase 2F-2); without it the matched-Job feature becomes dead code. Other open items: timestamp unit (must be seconds, not ms), exact signing canonicalisation, HMAC secret handover mechanism.                     |
+| **P1**   | SOSL Job lookup validation on real production traffic                      | tech coordinator            | Sandbox passed (4/4 in `scripts/test-sosl-lookup.ts`); production has not yet been hit by real Growatt SNs. Observe `Job_Number__c` fill rate once Growatt traffic begins.                                                                                                                                                            |
+| **P1**   | Replace `XXX` placeholder in `/success` warning with real support email    | Jack                        | Affects real user-facing copy when photo upload partially fails. Must be replaced before Growatt cut-over.                                                                                                                                                                                                                            |
+| **P2**   | Add `'ShinePhone'` to `Case_Origin__c` picklist (sandbox + production both)| Jack                        | Currently the code hardcodes `Case_Origin__c = 'Web'`. Adding `'ShinePhone'` is only needed when we actually start writing that value — future feature, not a launch blocker.                                                                                                                                                          |
+| **P2**   | Move local repo from `~/Desktop/Sunterra-Support` to `~/code/Sunterra-Support` | Jack                    | iCloud Desktop Sync causes `readFileSync ETIMEDOUT` on `globals.css` during `npm run build` / `npm run dev`. Planned for Monday on office network.                                                                                                                                                                                    |
+| **P2**   | Restore `.env.local` from `.env.local.sandbox-backup`                      | Jack                        | `.env.local` is currently pointed at production (for curl smoke tests during the 2026-05-24 deploy). Restore sandbox values after the iCloud-sync repo move on Monday.                                                                                                                                                                |
 
 #### Field verification detail (`a1y8s00000EcUhlAAF` / Case-14060)
 
@@ -344,7 +415,7 @@ docs.
 | `TOKEN_TTL_SECONDS`        | Deep-link validity window (default 86400 = 24h).                       |
 | `SALESFORCE_CLIENT_ID`     | Consumer Key of the External Client App.                               |
 | `SALESFORCE_CLIENT_SECRET` | Consumer Secret of the External Client App.                            |
-| `SALESFORCE_INSTANCE_URL`  | SF org base URL (sandbox URL today, prod URL once Phase 2H ships).     |
+| `SALESFORCE_INSTANCE_URL`  | SF org base URL. Sandbox in `.env.local` for local dev; production URL configured in Vercel Production env. |
 | `SALESFORCE_API_VERSION`   | REST API version path segment (`v62.0`).                               |
 | `NODE_ENV`                 | `development` enables `/dev/*` tools; `production` 404s them.          |
 
@@ -461,6 +532,26 @@ Carried forward from previous handover, updated to today's state:
   or "OR" (extremely unlikely for Growatt SNs which are
   alphanumeric), the SOSL query would fail. Out of scope to
   mitigate.
+- **Vercel platform constraints — current state**.
+  Body size: 4.5MB hard limit. Photo pipeline operates at
+  `maxSizeMB: 0.5` compression × 5 photos × 1.37 base64 inflation
+  ≈ 3.4MB worst case — safe margin maintained.
+  Function timeout: 10s. Serial upload of 5 photos can take 5-10s
+  under network jitter (each SF Files API call ~800ms-2s). No
+  failures observed in sandbox; will be monitored in production
+  once real photo-attached tickets arrive. Mitigation options if
+  the timeout starts triggering: limited concurrency (p-limit 2-3),
+  fire-and-forget photo uploads after Case creation, or Vercel Pro
+  Edge runtime (5min timeout).
+- **Local repo location: iCloud Desktop Sync incompatibility**.
+  Discovered 2026-05-24: when the repo lives at
+  `/Users/liushize/Desktop/Sunterra-Support`, iCloud Drive's
+  "Desktop & Documents Folders" sync intercepts file reads.
+  `npm run build` and `npm run dev` both fail with
+  `readFileSync ETIMEDOUT` on `app/globals.css`. Confirmed by
+  `defaults read MobileMeAccounts` showing the `CLOUDDESKTOP`
+  dataclass enabled. Fix: move repo to a non-synced path
+  (e.g., `~/code/Sunterra-Support`). Tracked as P2 outstanding item.
 - **`tsconfig.json` is silently rewritten by Next.js 16 during
   `npm run build`**: Discovered during Phase 2F-2 Step #2 — Next.js
   16.2.6 + Turbopack drops `strict: true` and the `@/*` path alias
@@ -468,9 +559,12 @@ Carried forward from previous handover, updated to today's state:
   `git checkout HEAD -- tsconfig.json` and build then passed.
   Likely related to the existing "multiple lockfiles" warning
   (root `/Users/liushize/package-lock.json` confuses Next's
-  workspace root detection). Before Phase 2H production launch:
-  delete the stray root lockfile, or add `outputFileTracingRoot`
-  in `next.config.js` to pin the workspace root explicitly.
+  workspace root detection). Fix: delete the stray root lockfile,
+  or add `outputFileTracingRoot` in `next.config.js` to pin the
+  workspace root explicitly. (Production deploy on 2026-05-24
+  succeeded despite this — Vercel uses the repo-root `tsconfig.json`
+  as committed; the rewrite only fires when `npm run build` runs
+  locally on a machine where Next's workspace heuristic mispicks.)
 - **Two `case_created` log lines per submission**: Phase 2F-2
   added `[salesforce] createCustomerCare: case_created ...` inside
   `lib/salesforce.ts` (with `job=NAME(ID)` enrichment), keeping
@@ -500,16 +594,26 @@ Carried forward from previous handover, updated to today's state:
 
   ContentVersion records (file attachments) will be deleted
   automatically when their parent Customer_Care__c is deleted.
+- **Production test cases (2026-05-24 deploy audit trail)** — all three
+  created and immediately deleted by admin user via SF UI (integration
+  user lacks Delete on `Customer_Care__c`):
+  - `Case-14083` — curl POST OAuth test ("Production OAuth test")
+  - `Case-14084` — web form E2E ("Support: Battery issue")
+  - `Case-14085` — web form E2E second pass ("Support: Inverter Issue")
+
+  No further production cleanup needed; listed for audit trail only.
 - **Unused `TicketSubmission` type** in `types/installation.ts` — defined but
   never imported. Either wire it in or delete it.
-- **Production deployment** not configured (no Vercel project, no custom
-  domain).
 
 ## How to test locally
 
-1. Make sure `.env.local` is configured (HMAC secret + Salesforce Client
-   Credentials + sandbox `SALESFORCE_INSTANCE_URL`). Copy `.env.example` if
-   starting fresh.
+1. Make sure `.env.local` is configured with HMAC secret + Salesforce
+   Client Credentials + **sandbox** `SALESFORCE_INSTANCE_URL`. Copy
+   `.env.example` if starting fresh. **As of 2026-05-24, `.env.local`
+   is temporarily pointed at production** for curl smoke tests during
+   the production deploy — restore the sandbox values from
+   `.env.local.sandbox-backup` before running `npm run dev`, otherwise
+   local form submissions will create real production cases.
 2. `npm run dev`
 3. Open `http://localhost:3000/dev/test-link` — the dev-only test-URL
    generator. Pick "valid" and hit "Generate test URL".
@@ -518,6 +622,10 @@ Carried forward from previous handover, updated to today's state:
 5. On success the page redirects to `/success?caseId=…`. Open the sandbox at
    `https://sunterra--dev.sandbox.my.salesforce.com` and check the
    `Customer_Care__c` record exists with the expected field values.
+6. To test against production (**curl only — never via `npm run dev`**
+   to avoid creating stray production cases), temporarily swap in the
+   production credentials, run the curl, then immediately restore
+   `.env.local.sandbox-backup`.
 
 If the test-link page 404s, you're not in development mode — check `NODE_ENV`.
 
