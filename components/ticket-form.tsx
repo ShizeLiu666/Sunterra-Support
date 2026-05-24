@@ -530,4 +530,5 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
         </div>
       </div>
     </form>
- 
+  );
+}

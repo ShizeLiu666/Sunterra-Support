@@ -47,3 +47,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# local-only one-off scripts (gen-prod-test-url.local.ts, etc.)
+scripts/*.local.ts
