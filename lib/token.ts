@@ -61,7 +61,12 @@ export function verifyToken(params: URLSearchParams): TokenVerificationResult {
     return { valid: false, reason: "malformed" };
   }
 
-  if (age > env.TOKEN_TTL_SECONDS) {
+  // Per spec §5: "Validation rule: current_unix_time - timestamp ≤
+  // 86400 + 300". The +MAX_CLOCK_SKEW_SECONDS grace covers the case
+  // where ShinePhone's clock is ahead of ours and they sign a
+  // near-expiry timestamp; without this we'd reject up to 5 minutes
+  // before the spec mandates expiry.
+  if (age > env.TOKEN_TTL_SECONDS + MAX_CLOCK_SKEW_SECONDS) {
     return { valid: false, reason: "expired" };
   }
 
