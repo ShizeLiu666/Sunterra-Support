@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { InstallationData } from "@/types/installation";
+import { MAX_SNS, type InstallationData } from "@/types/installation";
 
 const PRESET_VALID: InstallationData = {
-  sn: "GW2024XK8B72",
+  sns: ["GW2024XK8B72"],
   name: "John Smith",
   email: "john.smith@example.com",
   address: "123 Solar Ave, Adelaide SA 5000, Australia",
@@ -13,13 +13,35 @@ const PRESET_VALID: InstallationData = {
 };
 
 const PRESET_MINIMAL: InstallationData = {
-  sn: "GW2024XK8B72",
+  sns: ["GW2024XK8B72"],
+};
+
+const PRESET_MULTI: InstallationData = {
+  sns: ["SN001", "SN002", "SN003", "SN004", "SN005"],
+  name: "Sarah Johnson",
+  email: "sarah.j@example.com",
+  address: "42 Solar Ave, Adelaide SA 5000, Australia",
+  language: "en-AU",
 };
 
 type Scenario = "valid" | "expired" | "tampered" | "missing_sn" | "custom";
 
+/** Fields rendered as plain string inputs (sns is handled separately). */
+type StringField = "name" | "email" | "address" | "inverterModel" | "language";
+const STRING_FIELDS: readonly StringField[] = [
+  "name",
+  "email",
+  "address",
+  "inverterModel",
+  "language",
+];
+
 export default function TestLinkClient() {
   const [data, setData] = useState<InstallationData>(PRESET_VALID);
+  // Raw text the user types into the "sns" input. We hold this separately
+  // so the user can type commas mid-edit without us snapping the cursor or
+  // dropping characters from a partially-typed list.
+  const [snsInput, setSnsInput] = useState<string>(PRESET_VALID.sns.join(", "));
   const [scenario, setScenario] = useState<Scenario>("valid");
   const [generatedUrl, setGeneratedUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -28,11 +50,18 @@ export default function TestLinkClient() {
     setError("");
     setGeneratedUrl("");
 
+    const parsedSns = snsInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const payload: InstallationData = { ...data, sns: parsedSns };
+
     try {
       const response = await fetch("/api/dev/build-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, scenario }),
+        body: JSON.stringify({ data: payload, scenario }),
       });
 
       if (!response.ok) {
@@ -47,11 +76,18 @@ export default function TestLinkClient() {
     }
   }
 
-  function loadPreset(p: "valid" | "minimal") {
-    setData(p === "valid" ? PRESET_VALID : PRESET_MINIMAL);
+  function loadPreset(p: "valid" | "minimal" | "multi") {
+    const preset =
+      p === "valid"
+        ? PRESET_VALID
+        : p === "minimal"
+          ? PRESET_MINIMAL
+          : PRESET_MULTI;
+    setData(preset);
+    setSnsInput(preset.sns.join(", "));
   }
 
-  function updateField(field: keyof InstallationData, value: string) {
+  function updateField(field: StringField, value: string) {
     setData((prev) => ({ ...prev, [field]: value || undefined }));
   }
 
@@ -84,29 +120,48 @@ export default function TestLinkClient() {
           >
             Minimal (SN only)
           </button>
+          <button
+            onClick={() => loadPreset("multi")}
+            className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-100"
+          >
+            Multi-SN ({MAX_SNS} SNs)
+          </button>
         </div>
       </section>
 
       <section className="mb-6 space-y-4">
         <h2 className="text-lg font-medium">Installation data</h2>
 
-        {(["sn", "name", "email", "address", "inverterModel", "language"] as const).map(
-          (field) => (
-            <div key={field}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {field}
-                {field === "sn" && <span className="text-red-500"> *</span>}
-              </label>
-              <input
-                type="text"
-                value={data[field] ?? ""}
-                onChange={(e) => updateField(field, e.target.value)}
-                placeholder={field === "sn" ? "Required" : "Optional"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-sunterra-primary"
-              />
-            </div>
-          )
-        )}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            sns<span className="text-red-500"> *</span>
+            <span className="ml-2 font-normal text-gray-500">
+              (comma-separated, 1..{MAX_SNS})
+            </span>
+          </label>
+          <input
+            type="text"
+            value={snsInput}
+            onChange={(e) => setSnsInput(e.target.value)}
+            placeholder={`e.g. SN001, SN002, SN003 (up to ${MAX_SNS})`}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-sunterra-primary"
+          />
+        </div>
+
+        {STRING_FIELDS.map((field) => (
+          <div key={field}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {field}
+            </label>
+            <input
+              type="text"
+              value={data[field] ?? ""}
+              onChange={(e) => updateField(field, e.target.value)}
+              placeholder="Optional"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-sunterra-primary"
+            />
+          </div>
+        ))}
       </section>
 
       <section className="mb-6">

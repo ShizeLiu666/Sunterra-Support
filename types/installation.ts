@@ -3,12 +3,23 @@
  * Used across URL parsing, token verification, UI display, and Salesforce API.
  *
  * Field naming convention: camelCase, matches Growatt URL params.
+ *
+ * SN-list semantics (2026-05-25 protocol change):
+ *   The wire URL carries a single `sn` query param whose value is a
+ *   comma-joined string of 1..5 inverter/battery serial numbers (e.g.
+ *   `?sn=SN1,SN2,SN3`). HMAC signing operates on that raw string verbatim.
+ *   Once verified, the application layer splits on `,` to produce
+ *   `InstallationData.sns: string[]` — the parsed form every UI / API
+ *   consumer works with.
  */
 
-// Data from ShinePhone URL (what we receive).
+/** Maximum allowed serial numbers in a single ShinePhone deep link. */
+export const MAX_SNS = 5;
+
+// Application-side representation: SNs are already parsed into an array.
 export interface InstallationData {
   // Required
-  sn: string; // Device serial number — used to match SF Installation
+  sns: string[]; // Inverter/battery serial numbers (1..MAX_SNS)
 
   // Optional (from ShinePhone)
   name?: string; // Customer name (could be account name, user-editable)
@@ -18,10 +29,19 @@ export interface InstallationData {
   language?: string; // Language code (e.g., "en-AU", "zh-CN")
 }
 
-// URL params from ShinePhone (raw, before validation).
-export interface UrlParams extends InstallationData {
+// Raw URL params from ShinePhone (wire format, before parsing).
+// `sn` is the comma-joined string of all SNs — this is the form the HMAC
+// signature is computed over. Do NOT split it before verifying the signature.
+export interface UrlParams {
+  sn: string; // raw comma-joined SN list, e.g. "SN1,SN2,SN3"
   timestamp: string; // Unix timestamp (seconds), as string from URL
   sign: string; // HMAC-SHA256 signature
+
+  name?: string;
+  email?: string;
+  address?: string;
+  inverterModel?: string;
+  language?: string;
 }
 
 export type TokenVerificationFailureReason =

@@ -4,14 +4,19 @@
  * Object model recap:
  *   - Customer_Care__c  → the "Case"/ticket record we create
  *   - Job__c            → the "Installation" record (API name is Job__c;
- *                         label is "Installation"). We do NOT query Job__c
- *                         from the web layer — Sunterra's Salesforce admin
- *                         owns the SN → Job association via SF Flow.
+ *                         label is "Installation"). Reverse-lookup from
+ *                         SN to Job__c is implemented as `findJobBySN()`
+ *                         (SOSL) but is currently gated behind the
+ *                         ENABLE_SOSL_JOB_LOOKUP env flag — see Phase 2J
+ *                         multi-SN note below.
  *
  * The web layer's responsibility is intentionally minimal:
  *   - Build a Customer_Care__c record from the form payload
- *   - Stash the inverter SN in Inverter_Battery_Serials__c (plain text)
- *   - Leave Job_Number__c empty; downstream Flow will reconcile if it can
+ *   - Stash the inverter SN(s) in Inverter_Battery_Serials__c. With
+ *     ShinePhone v1 the caller passes a comma-joined string of 1..5 SNs;
+ *     the field must be a Long Text Area to hold the worst case.
+ *   - Leave Job_Number__c empty when the SOSL lookup is disabled or
+ *     unmatched; support staff will reconcile manually.
  *
  * Auth flow: Client Credentials Flow against the Connected App configured by
  * Sunterra's SF admin. The "Run-As User" identity is set in SF; we just need
@@ -132,7 +137,10 @@ export interface CreateCustomerCareInput {
   subject: string; // → Subject__c
   description: string; // → Description__c
   type: string; // → Type__c (caller passes already-mapped SF picklist value)
-  sn: string; // → Inverter_Battery_Serials__c (stored as plain text)
+  sn: string; // → Inverter_Battery_Serials__c. With ShinePhone v1 this is
+  //              a comma-joined string of 1..5 SNs (e.g. "SN1,SN2,SN3");
+  //              caller is responsible for joining. SF field must be a
+  //              Long Text Area to hold the worst case.
 
   // Optional association
   installationId?: string | null; // → Job_Number__c (omit field entirely if null/undefined)
@@ -181,8 +189,14 @@ export async function createCustomerCare(
   // 0 results/etc.) it returns null and logs to console.error. We treat
   // null as "unmatched" — case is still created, just without Job_Number__c
   // populated. Support staff will reconcile manually.
+  //
+  // Phase 2J (multi-SN ShinePhone v1): the lookup is gated behind
+  // ENABLE_SOSL_JOB_LOOKUP. With multi-SN, `input.sn` is a comma-joined
+  // string like "SN1,SN2,SN3" — SOSL would never resolve that as a single
+  // serial. The findJobBySN function is preserved so we can flip the flag
+  // back on once ShinePhone supports a single-SN entry point.
   let matchedJob: JobLookupResult | null = null;
-  if (input.sn) {
+  if (env.ENABLE_SOSL_JOB_LOOKUP && input.sn) {
     matchedJob = await findJobBySN(input.sn, token, instanceBaseUrl());
   }
   // --- end Phase 2F-2 SN lookup ---
@@ -255,7 +269,7 @@ export async function createCustomerCare(
   const name = await fetchCustomerCareName(id, token);
 
   console.log(
-    `[salesforce] createCustomerCare: case_created id=${id} name=${name ?? "(unavailable)"} sn=${input.sn} type=${input.type} matched=${matchedJob !== null} ${matchedJob ? `job=${matchedJob.name}(${matchedJob.id})` : "job=null"}`
+    `[salesforce] createCustomerCare: case_created id=${id} name=${name ?? "(unavailable)"} sn=${input.sn} type=${input.type} sosl_enabled=${env.ENABLE_SOSL_JOB_LOOKUP} matched=${matchedJob !== null} ${matchedJob ? `job=${matchedJob.name}(${matchedJob.id})` : "job=null"}`
   );
 
   return {

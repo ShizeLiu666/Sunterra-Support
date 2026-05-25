@@ -7,7 +7,7 @@ import type { InstallationData } from "@/types/installation";
  * Mock data used ONLY in development when no URL params are present.
  */
 const DEV_FALLBACK_DATA: InstallationData = {
-  sn: "GW2024XK8B72",
+  sns: ["GW2024XK8B72"],
   name: "John Smith",
   email: "john.smith@example.com",
   address: "123 Solar Ave, Adelaide SA 5000, Australia",

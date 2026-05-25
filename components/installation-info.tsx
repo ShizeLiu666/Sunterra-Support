@@ -58,9 +58,48 @@ export default function InstallationInfo({
         {data.inverterModel && (
           <ReadOnlyRow label="Inverter" value={data.inverterModel} />
         )}
-        <LockedRow label="Serial number" value={data.sn} />
+        <SerialNumberRow sns={data.sns} />
       </div>
     </section>
+  );
+}
+
+interface SerialNumberRowProps {
+  sns: string[];
+}
+
+/**
+ * Locked row for the inverter/battery serial number(s).
+ *
+ * - 1 SN  → label "Serial number", single value on the right (legacy look)
+ * - n>1  → label "Serial numbers", each SN on its own line, right-aligned
+ *
+ * No selection / no editing — this is purely informational. Customers can't
+ * change the SN list; it comes from ShinePhone via the signed URL.
+ */
+function SerialNumberRow({ sns }: SerialNumberRowProps) {
+  if (sns.length === 0) {
+    // Defensive: verifyToken rejects zero-SN URLs upstream, so this branch
+    // is only reachable from dev-only fallback paths where we still want a
+    // visible placeholder rather than a blank row.
+    return <LockedRow label="Serial number" value="—" />;
+  }
+
+  if (sns.length === 1) {
+    return <LockedRow label="Serial number" value={sns[0]} />;
+  }
+
+  return (
+    <div className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+      <span className="text-sm text-sunterra-dark/60 shrink-0">
+        Serial numbers
+      </span>
+      <ul className="text-sm font-mono text-sunterra-dark text-right space-y-0.5 break-words">
+        {sns.map((sn, idx) => (
+          <li key={`${sn}-${idx}`}>{sn}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

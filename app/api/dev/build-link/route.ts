@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { buildSignedUrl } from "@/lib/sign-url";
-import type { InstallationData } from "@/types/installation";
+import { MAX_SNS, type InstallationData } from "@/types/installation";
 
 /**
  * Dev-only endpoint: builds a signed test URL.
@@ -21,9 +21,23 @@ export async function POST(req: NextRequest) {
       scenario: "valid" | "expired" | "tampered" | "missing_sn";
     };
 
-    if (scenario !== "missing_sn" && !data.sn) {
+    if (!Array.isArray(data.sns)) {
       return NextResponse.json(
-        { message: "SN is required for this scenario" },
+        { message: "data.sns must be an array of SNs" },
+        { status: 400 }
+      );
+    }
+
+    if (scenario !== "missing_sn" && data.sns.length === 0) {
+      return NextResponse.json(
+        { message: "At least one SN is required for this scenario" },
+        { status: 400 }
+      );
+    }
+
+    if (data.sns.length > MAX_SNS) {
+      return NextResponse.json(
+        { message: `At most ${MAX_SNS} SNs are allowed` },
         { status: 400 }
       );
     }
@@ -35,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     let scenarioData = { ...data };
     if (scenario === "missing_sn") {
-      scenarioData = { ...data, sn: "" };
+      scenarioData = { ...data, sns: [] };
     }
 
     const origin =

@@ -24,6 +24,14 @@ interface Env {
   SALESFORCE_INSTANCE_URL: string;
   SALESFORCE_API_VERSION: string;
 
+  // Feature flags
+  // Whether to perform SOSL reverse-lookup from SN → Job__c during
+  // Customer_Care__c creation. Currently OFF because ShinePhone v1
+  // sends 1..5 SNs as a comma-joined string and we can't disambiguate
+  // which one to query. Flip back to true once ShinePhone supports a
+  // single-SN entry point.
+  ENABLE_SOSL_JOB_LOOKUP: boolean;
+
   // Runtime group
   NODE_ENV: "development" | "production" | "test";
   IS_DEV: boolean;
@@ -60,6 +68,9 @@ const validators: { [K in keyof Env]: () => Env[K] } = {
   SALESFORCE_CLIENT_SECRET: () => readRequired("SALESFORCE_CLIENT_SECRET"),
   SALESFORCE_INSTANCE_URL: () => readRequired("SALESFORCE_INSTANCE_URL"),
   SALESFORCE_API_VERSION: () => readOptional("SALESFORCE_API_VERSION", "v62.0"),
+
+  ENABLE_SOSL_JOB_LOOKUP: () =>
+    readOptional("ENABLE_SOSL_JOB_LOOKUP", "false").toLowerCase() === "true",
 
   NODE_ENV: () => (process.env.NODE_ENV || "development") as Env["NODE_ENV"],
 

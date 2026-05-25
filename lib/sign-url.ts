@@ -18,8 +18,14 @@ export interface BuildSignedUrlOptions {
 export function buildSignedUrl(opts: BuildSignedUrlOptions): string {
   const timestamp = opts.timestamp ?? Math.floor(Date.now() / 1000);
 
+  // Wire format: SNs are concatenated with commas into a single `sn`
+  // param value. The HMAC signature is computed over this joined string
+  // verbatim. Empty arrays still produce a "" value so dev scenarios
+  // that test the "missing SN" path can exercise it.
+  const joinedSn = opts.data.sns.join(",");
+
   const params: Record<string, string> = {
-    sn: opts.data.sn,
+    sn: joinedSn,
     timestamp: String(timestamp),
   };
 

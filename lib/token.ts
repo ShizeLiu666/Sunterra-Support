@@ -1,8 +1,9 @@
 import { env } from "./env";
 import { verifySignature } from "./hmac";
-import type {
-  InstallationData,
-  TokenVerificationResult,
+import {
+  MAX_SNS,
+  type InstallationData,
+  type TokenVerificationResult,
 } from "@/types/installation";
 
 /**
@@ -11,6 +12,26 @@ import type {
  * ShinePhone server and our server.
  */
 const MAX_CLOCK_SKEW_SECONDS = 5 * 60;
+
+/**
+ * Parse the raw `sn` URL parameter into an array of SNs.
+ *
+ * Wire format: a comma-joined string, e.g. `"SN1,SN2,SN3"`.
+ * Returns the parsed list, or null if the parameter is structurally
+ * invalid (empty after trim/filter, or more than MAX_SNS entries).
+ *
+ * Whitespace around each SN is stripped. Empty entries produced by
+ * stray commas (e.g. `"SN1,,SN3"`) are filtered out before counting.
+ */
+function parseSnList(raw: string): string[] | null {
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (parts.length === 0) return null;
+  if (parts.length > MAX_SNS) return null;
+  return parts;
+}
 
 /**
  * Verify URL parameters against HMAC signature and timestamp.
@@ -23,7 +44,7 @@ export function verifyToken(params: URLSearchParams): TokenVerificationResult {
   const timestampStr = params.get("timestamp");
   const sign = params.get("sign");
 
-  if (!sn || !timestampStr || !sign) {
+  if (!sn || !sn.trim() || !timestampStr || !sign) {
     return { valid: false, reason: "missing_params" };
   }
 
@@ -44,6 +65,8 @@ export function verifyToken(params: URLSearchParams): TokenVerificationResult {
     return { valid: false, reason: "expired" };
   }
 
+  // Signature verification operates on the raw `sn` string verbatim
+  // (comma-joined, no split). This MUST match what Growatt signs.
   const allParams: Record<string, string> = {};
   params.forEach((value, key) => {
     allParams[key] = value;
@@ -54,8 +77,18 @@ export function verifyToken(params: URLSearchParams): TokenVerificationResult {
     return { valid: false, reason: "invalid_signature" };
   }
 
+  // Only AFTER signature verification do we split the SN list.
+  // Splitting before would let an attacker influence the parse path
+  // without paying the HMAC cost.
+  const sns = parseSnList(sn);
+  if (!sns) {
+    // sn was syntactically valid for signing (non-empty string) but
+    // either resolved to zero non-empty entries or more than MAX_SNS.
+    return { valid: false, reason: "malformed" };
+  }
+
   const data: InstallationData = {
-    sn,
+    sns,
     name: params.get("name") || undefined,
     email: params.get("email") || undefined,
     address: params.get("address") || undefined,

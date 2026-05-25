@@ -15,8 +15,15 @@ import {
  * Customer_Care__c record via lib/salesforce, then (Phase 2G-3) uploads any
  * attached photos serially via uploadPhotoToCase.
  *
- * Job_Number__c is never set from the web layer; Sunterra's downstream SF
- * Flow reconciles SN → Job__c.
+ * SN list (ShinePhone v1, 2026-05-25): `token.sn` is a comma-joined string
+ * of 1..5 inverter/battery serial numbers (e.g. "SN1,SN2,SN3"). We forward
+ * the raw string into Customer_Care__c.Inverter_Battery_Serials__c verbatim;
+ * support staff are responsible for splitting it back out if needed.
+ *
+ * Job_Number__c (SN → Job__c) is currently NOT populated by the web layer
+ * because the ENABLE_SOSL_JOB_LOOKUP feature flag is off. The SOSL helper
+ * (`findJobBySN`) is preserved in lib/salesforce.ts and will be re-enabled
+ * via the env flag once ShinePhone exposes a single-SN entry point.
  *
  * Request body:
  *   {
@@ -24,6 +31,7 @@ import {
  *     form:   { type, subject, description, customerName?, email?, ... },
  *     photos?: [{ filename: string, mimeType: "image/...", base64: string }]
  *   }
+ *   - token.sn is the raw comma-joined wire string; we never split it here.
  *   - photos is optional; max 5 entries; each base64 is raw (no data-URL prefix).
  *
  * Response shapes:
@@ -31,13 +39,15 @@ import {
  *     - caseNumber is the customer-facing Auto Number Name (e.g. "Case-14060");
  *       if the post-create Name lookup failed it falls back to the 18-char
  *       Record ID so the client always has *some* reference to display.
+ *     - matched is always `false` while ENABLE_SOSL_JOB_LOOKUP=false; the
+ *       field is kept on the wire for backward compatibility.
  *     - photoWarning is the count of photos that failed to upload; the field
  *       is OMITTED when zero (so the client URL stays clean on the happy path).
  *     - The Case is NEVER rolled back when photo uploads fail; the customer's
  *       ticket is more important than the attachments.
  *   400 { success: false, error: "invalid request body" }
  *   400 { success: false, error: "Invalid photos payload" }
- *   401 { success: false, error: "invalid token" }
+ *   401 { success: false, error: "invalid token" }   // includes too-many-SNs
  *   500 { success: false, error: <message> }
  */
 
