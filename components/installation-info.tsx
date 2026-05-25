@@ -76,17 +76,25 @@ interface SerialNumberRowProps {
  *
  * No selection / no editing — this is purely informational. Customers can't
  * change the SN list; it comes from ShinePhone via the signed URL.
+ *
+ * Defensive normalization: even though verifyToken (lib/token.ts) is supposed
+ * to hand us a parsed string[], we re-split on commas here so the UI also
+ * renders correctly when an upstream caller (older deploy, dev fallback,
+ * future regression) passes a single comma-joined element such as
+ * `["SN001,SN002,SN003"]`. Cheap and keeps the customer-facing view honest.
  */
 function SerialNumberRow({ sns }: SerialNumberRowProps) {
-  if (sns.length === 0) {
-    // Defensive: verifyToken rejects zero-SN URLs upstream, so this branch
-    // is only reachable from dev-only fallback paths where we still want a
-    // visible placeholder rather than a blank row.
+  const normalized = sns
+    .flatMap((s) => s.split(","))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (normalized.length === 0) {
     return <LockedRow label="Serial number" value="—" />;
   }
 
-  if (sns.length === 1) {
-    return <LockedRow label="Serial number" value={sns[0]} />;
+  if (normalized.length === 1) {
+    return <LockedRow label="Serial number" value={normalized[0]} />;
   }
 
   return (
@@ -95,7 +103,7 @@ function SerialNumberRow({ sns }: SerialNumberRowProps) {
         Serial numbers
       </span>
       <ul className="text-sm font-mono text-sunterra-dark text-right space-y-0.5 break-words">
-        {sns.map((sn, idx) => (
+        {normalized.map((sn, idx) => (
           <li key={`${sn}-${idx}`}>{sn}</li>
         ))}
       </ul>
