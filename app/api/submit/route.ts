@@ -249,11 +249,20 @@ export async function POST(request: Request): Promise<Response> {
   urlParams.set("sn", body.token.sn);
   urlParams.set("timestamp", body.token.timestamp);
   urlParams.set("sign", body.token.sign);
-  if (body.token.name) urlParams.set("name", body.token.name);
-  if (body.token.email) urlParams.set("email", body.token.email);
-  if (body.token.address) urlParams.set("address", body.token.address);
-  if (body.token.inverterModel) urlParams.set("inverterModel", body.token.inverterModel);
-  if (body.token.language) urlParams.set("language", body.token.language);
+  // Use `!== undefined` (NOT truthy) so empty-string fields participate in
+  // the rebuilt canonical, matching `lib/hmac.ts::buildSignString` which
+  // skips ONLY undefined values (empty strings are signed as `key=`).
+  // Growatt's ShinePhone keeps empty optional fields in the URL — when we
+  // re-verify here, our rebuilt urlParams MUST include the same empty
+  // keys, otherwise our canonical sign string drops a field that Growatt
+  // signed → invalid_signature on submit even though the original URL
+  // validated fine on /page.tsx. (Fix confirmed root cause of /api/submit
+  // token_invalid_signature post the 2026-05-26 hmac.ts change.)
+  if (body.token.name !== undefined) urlParams.set("name", body.token.name);
+  if (body.token.email !== undefined) urlParams.set("email", body.token.email);
+  if (body.token.address !== undefined) urlParams.set("address", body.token.address);
+  if (body.token.inverterModel !== undefined) urlParams.set("inverterModel", body.token.inverterModel);
+  if (body.token.language !== undefined) urlParams.set("language", body.token.language);
 
   // Forward request IP / User-Agent into verifyToken so its failure log
   // can tell us whether the call is coming from a real Growatt WebView

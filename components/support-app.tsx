@@ -32,11 +32,25 @@ function readTokenFromUrl(): UrlParams | null {
   const address = sp.get("address");
   const inverterModel = sp.get("inverterModel");
   const language = sp.get("language");
-  if (name) token.name = name;
-  if (email) token.email = email;
-  if (address) token.address = address;
-  if (inverterModel) token.inverterModel = inverterModel;
-  if (language) token.language = language;
+  // Use `!== null` (NOT truthy) so empty-string fields survive into the
+  // forwarded token state, matching `lib/hmac.ts::buildSignString` which
+  // keeps empty strings in the canonical (only undefined is omitted).
+  // URLSearchParams.get() returns:
+  //   - `null`  when the key is absent from the URL  → skip
+  //   - `""`    when the key is present-but-empty    → KEEP (Growatt sends
+  //                                                    `?email=&...` for
+  //                                                    accounts with no
+  //                                                    on-file email)
+  //   - `"foo"` when the key has a value              → KEEP
+  // Filtering empties here would make /api/submit receive `token.email=
+  // undefined`, then `validateBody` drops the key, then the rebuilt
+  // canonical sign string omits `email=` → invalid_signature even though
+  // the original URL verified fine on first load.
+  if (name !== null) token.name = name;
+  if (email !== null) token.email = email;
+  if (address !== null) token.address = address;
+  if (inverterModel !== null) token.inverterModel = inverterModel;
+  if (language !== null) token.language = language;
   return token;
 }
 
