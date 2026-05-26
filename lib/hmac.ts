@@ -17,11 +17,24 @@ export interface SignableParams {
 
 /**
  * Build the canonical string to sign from params.
- * Excludes 'sign' field. Skips undefined/empty values.
+ *
+ * Excludes the `sign` field itself. Skips ONLY undefined values; empty
+ * strings ARE included and signed as `key=` (no value after the `=`).
+ *
+ * Why: Growatt's ShinePhone implementation keeps empty optional fields
+ * in the URL (e.g. `?email=&name=John&…`) and includes them when
+ * computing the canonical sign string. Filtering empties on our side
+ * would produce a different canonical string → signature mismatch
+ * → invalid_signature on every Growatt request that has any empty
+ * optional field. Confirmed via Growatt integration logs 2026-05-26.
+ *
+ * Note: this intentionally deviates from spec docx §3 ("Optional fields
+ * that have no value should be omitted from the URL entirely") because
+ * Growatt's actual implementation does not enforce that rule.
  */
 export function buildSignString(params: SignableParams): string {
   const filtered = Object.entries(params)
-    .filter(([key, value]) => key !== "sign" && value !== undefined && value !== "")
+    .filter(([key, value]) => key !== "sign" && value !== undefined)
     .map(([key, value]) => [key, String(value)] as [string, string])
     .sort(([a], [b]) => a.localeCompare(b));
 
