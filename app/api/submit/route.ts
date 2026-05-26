@@ -255,7 +255,15 @@ export async function POST(request: Request): Promise<Response> {
   if (body.token.inverterModel) urlParams.set("inverterModel", body.token.inverterModel);
   if (body.token.language) urlParams.set("language", body.token.language);
 
-  const tokenResult = verifyToken(urlParams);
+  // Forward request IP / User-Agent into verifyToken so its failure log
+  // can tell us whether the call is coming from a real Growatt WebView
+  // vs. someone replaying the URL from a browser. No effect on validation.
+  const reqIp =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    null;
+  const reqUa = request.headers.get("user-agent") || null;
+  const tokenResult = verifyToken(urlParams, { ip: reqIp, userAgent: reqUa });
   if (!tokenResult.valid) {
     console.log(
       `[/api/submit] case_failed: reason=token_${tokenResult.reason ?? "unknown"} sn=${body.token.sn}`

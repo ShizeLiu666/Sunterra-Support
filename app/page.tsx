@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import SupportApp from "@/components/support-app";
 import { verifyToken } from "@/lib/token";
 import type { InstallationData } from "@/types/installation";
@@ -44,7 +45,16 @@ export default async function HomePage({ searchParams }: PageProps) {
       isDevFallback = true;
     }
   } else {
-    const result = verifyToken(urlParams);
+    // Request context attached to verifyToken's failure logs only —
+    // helps triage Growatt integration issues (which IP / UA hit us).
+    // No effect on validation logic itself.
+    const h = await headers();
+    const ip =
+      h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      h.get("x-real-ip") ||
+      null;
+    const userAgent = h.get("user-agent") || null;
+    const result = verifyToken(urlParams, { ip, userAgent });
 
     if (!result.valid) {
       redirect(`/expired?reason=${result.reason}`);
