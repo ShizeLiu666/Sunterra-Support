@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -34,9 +33,42 @@ export const metadata: Metadata = {
  * a function` and bails before our app renders.
  *
  * Both polyfills are guarded by `if (!…)` so they are no-ops on modern
- * browsers. Loaded with `strategy="beforeInteractive"` so Next.js inlines
- * the script into the server-rendered `<head>` and it runs BEFORE any
- * Next.js framework chunk executes.
+ * browsers.
+ *
+ * WHY native <script> instead of <Script strategy="beforeInteractive">:
+ * Next 16's App Router implementation of `beforeInteractive` does NOT emit
+ * a native <script> with the polyfill body. It emits a tiny <script> that
+ * pushes `{id, children}` to `self.__next_s`, and the real <script> element
+ * is only appended (via `document.body.appendChild`) by Next's runtime
+ * `loadScript()` AFTER the framework runtime chunk has loaded and run.
+ * (Verified in node_modules/next/dist/client/script.js lines 274–289 and
+ * confirmed in the prod HTML on 2026-05-26.) Because the framework chunks
+ * in <head> are marked `async`, they begin executing as soon as their
+ * network fetch completes — well before the polyfill queue is drained —
+ * and on Chrome 83 they crash on `.at()` / `Object.hasOwn` before we get
+ * a chance to install our polyfill.
+ *
+ * Rendering a raw <script dangerouslySetInnerHTML> JSX element instead
+ * makes React 19 + Next 16 emit a real native <script> tag at this exact
+ * position in the document.
+ *
+ * Placed as the FIRST child of an explicit <head> for ironclad
+ * pre-execution ordering. We previously tried body-first-child, but that
+ * left framework `<script src=… async>` tags positionally earlier (they
+ * live in <head>, which the browser parses before <body>). On real mobile
+ * networks that worked in practice (HTML parses in ~5 ms vs. async fetch
+ * latency of 50+ ms), but a hot WebView cache could close the gap and
+ * resurrect the race. Putting the polyfill in <head> as the very first
+ * element gives a hard document-order guarantee: the parser hits it
+ * BEFORE encountering any other <script> tag, fetch is never even started
+ * for a framework chunk while the polyfill body is still executing, and
+ * Array.prototype.at / Object.hasOwn are installed before any other JS
+ * has a chance to run regardless of cache state or network speed.
+ *
+ * React 19 supports declaring <head> directly in a layout; Next 16's
+ * metadata API (title/description/icon/etc.) still auto-injects ITS own
+ * tags into the head, appended after our explicit children — so this
+ * placement does not break the metadata API.
  *
  * If a new "X is not a function" surfaces on the WebView for a different
  * ES2022 built-in (e.g. `String.prototype.at`, `structuredClone`,
@@ -57,12 +89,13 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-white text-sunterra-dark">
-        <Script
+      <head>
+        <script
           id="es2022-builtin-polyfills"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: ES2022_BUILTIN_POLYFILLS }}
         />
+      </head>
+      <body className="min-h-full flex flex-col bg-white text-sunterra-dark">
         {children}
       </body>
     </html>
