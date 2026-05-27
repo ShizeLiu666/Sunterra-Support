@@ -513,7 +513,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           )}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !problemType || description.trim().length === 0}
             className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50] disabled:cursor-not-allowed disabled:bg-sunterra-primary/60 disabled:hover:bg-sunterra-primary/60"
           >
             {submitStage === "preparing_photos"
