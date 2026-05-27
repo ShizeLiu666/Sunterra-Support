@@ -29,6 +29,8 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@csstools/postcss-color-mix-function": "^4.0.4",
+    "@csstools/postcss-oklab-function": "^5.0.4",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
