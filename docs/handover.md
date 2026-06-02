@@ -679,3 +679,160 @@ When you (a future planning AI) write Cursor prompts:
   one big "implement everything".
 - Salesforce assumptions are dangerous — read this handover's Salesforce
   section before guessing field names, object names, or query strategies.
+
+## Update: 2026-05-26 to 2026-06-01
+
+This section appends the production-hardening work completed after the
+2026-05-24 handover baseline. Keep the earlier sections above for historical
+context; they document the original architecture and Salesforce decisions.
+
+### 2026-05-26 — iOS end-to-end success, old Android WebView issues exposed
+
+- Completed several integration bug fixes around the Growatt URL contract:
+  timestamp second-level alignment, HMAC empty-string field handling,
+  IP/User-Agent verification failure logging, and TTL clock-skew tolerance.
+- iOS Safari test passed end to end. Production `Customer_Care__c` case
+  `Case-14111` was successfully created.
+- Old Android WebView exposed runtime failures:
+  - `e.entries.at is not a function`
+  - `Unexpected token =`
+  - other old-engine `SyntaxError` failures from modern JavaScript syntax.
+- A `proxy.ts` / server-side HTML injection approach for early polyfill
+  placement was attempted, then failed in practice and was force-reverted.
+  It is **not** on `main`.
+
+### 2026-05-27 — Android compatibility push, six commits
+
+Diagnosis path:
+
+1. Reproduced in emulators: Android 10 Chrome 74 and Android 11 Chrome 91.
+2. Confirmed the user device is Huawei WebView 11 on Honor Play 6T.
+3. Layer-by-layer diagnosis showed the issue was not one bug, but the
+   combination of Tailwind CSS v4 modern CSS output and Next.js 16 Turbopack
+   build behavior on old WebViews.
+
+Full fix chain (preserve this list for future debugging):
+
+1. `88c4dd4` — `build: switch from turbopack to webpack`
+   - Turbopack in Next.js 16 does not read `package.json` `browserslist`.
+   - Result: SWC did not downlevel ES2021+ syntax such as `??=`, `??`, and
+     `?.`; old WebViews failed immediately with `SyntaxError`.
+   - Switching to webpack made browserslist-driven downleveling work.
+2. `bca27fd` — `fix: oklch/color-mix fallbacks`
+   - Added PostCSS fallbacks for `oklch()` and `color-mix()`.
+   - Chrome 80-91 reads the generated `rgb()` / `rgba()` fallback.
+   - Modern browsers keep the original `oklch()` / `color-mix()` path.
+3. `3338e88` — `fix: flatten Tailwind v4 nesting`
+   - Added `postcss-nesting` to flatten native CSS nesting such as
+     `&:hover`.
+   - Native nesting is Chrome 112+ only; Chrome 80-91 silently mishandles it.
+4. `5d673e3` — `style: show card visual on all viewports`
+   - Removed `md:` gating from the card visual styles so mobile users also
+     see the intended card background, radius, and shadow.
+   - Previously those visuals only appeared at widths >= 768px.
+5. `a39a492` — `fix: expand @layer cascade layers`
+   - The key fix. Tailwind v4 wraps almost all generated CSS in `@layer`
+     blocks.
+   - Cascade layers require Chrome 99+. Chrome 91 silently ignores the
+     entire layer block, causing almost every utility class to disappear.
+   - Added `@csstools/postcss-cascade-layers` to expand layers into
+     traditional CSS while preserving cascade precedence.
+6. `9d21867` — `feat: require problem type + description, disable iOS auto-zoom`
+   - Submit button now disables unless problem type is selected and
+     description is non-empty after trim.
+   - Added the Next.js `viewport` export in `app/layout.tsx` to prevent iOS
+     automatic zoom on focused inputs.
+
+### Key technical decisions
+
+#### Build tool
+
+- Must use `next build --webpack`, not default Turbopack.
+- Reason: Turbopack in Next.js 16 does not read `package.json`
+  `browserslist`, so old WebView JavaScript syntax downleveling is not
+  reliable.
+- Current `package.json` build script:
+
+```json
+"build": "next build --webpack"
+```
+
+#### PostCSS fallback chain
+
+The PostCSS pipeline in `postcss.config.mjs` is order-sensitive:
+
+1. `@tailwindcss/postcss` — compile Tailwind v4.
+2. `@csstools/postcss-cascade-layers` — expand `@layer`.
+3. `postcss-nesting` — expand `&` nesting.
+4. `@csstools/postcss-color-mix-function` — add `color-mix()` fallback.
+5. `@csstools/postcss-oklab-function` — add `oklch()` / `oklab()` fallback.
+
+If the order changes, the fallback chain can break. The color fallback
+plugins use `preserve: true` so modern browsers retain the modern CSS values
+while old Chrome/WebView falls back to generated `rgb()` / `rgba()` values.
+
+#### Browserslist
+
+Current `package.json` target:
+
+```json
+"browserslist": [
+  "chrome >= 80",
+  "edge >= 80",
+  "firefox >= 78",
+  "safari >= 14",
+  "ios_saf >= 14"
+]
+```
+
+### 2026-05-27 verification results
+
+- iOS Safari: complete end-to-end flow passed.
+- Android emulator:
+  - API 29 / Chrome 74: UI visually matched iOS, console had zero errors.
+  - API 30 / Chrome 91: UI visually matched iOS, console had zero errors.
+- User's real device: Honor Play 6T, Android 11 + Huawei WebView 11.
+  - Full flow passed.
+  - Production case `Case-14135` was successfully created.
+
+### Known small issues after Android hardening
+
+These were discussed with Lily and do not block launch:
+
+1. On real Huawei WebView, the success-page checkmark icon is slightly left
+   of center. Likely caused by ShinePhone WebView container spacing, not a
+   product bug.
+2. `rounded-full` compiles to `border-radius: 3.40282e+38px`. Chrome 91 does
+   not parse that scientific-notation radius. Impact is limited to whether
+   the "Verified" pill is perfectly capsule-shaped; no business flow impact.
+3. Local `npm run build` can fail during `/_not-found` prerender. This is a
+   local Node 24 + React 19 + Next 16 issue. Vercel CI is not affected.
+
+### 2026-06-01 current status
+
+- Waiting for Growatt production launch. Target was Monday/Tuesday that week;
+  exact timing to be confirmed by Ze.
+- Lily confirmed Sunterra will start with a few older customers as a gray
+  rollout, improve based on feedback, then expand to all users.
+- Sunterra internal ShinePhone test account requested via Mohammed. Before
+  full launch, run one complete self-test from the app.
+- Salesforce data-flow audit completed:
+  - `Customer_Care__c.Customer_Name__c` is a plain text/string field, not a
+    lookup to Account or Contact.
+  - Live `Customer_Care__c` describe showed 58 fields.
+  - No Account/Contact lookup fields are present on `Customer_Care__c`.
+  - Current design is an independent support-ticket model, not Account/Contact
+    association.
+
+### Post-launch TODOs
+
+- **P1:** Clean up production test cases:
+  - `Case-14111`
+  - `Case-14135`
+  - accumulated `[APP TEST]` cases
+- **P2:** Restore `.env.local` to sandbox configuration. It is currently
+  pointed at production.
+- **P3:** Change Salesforce field
+  `Customer_Care__c.Inverter_Battery_Serials__c` from `Text(50)` to Long Text
+  Area.
+- **P4:** Monitor real case creation for the first few days after launch.
