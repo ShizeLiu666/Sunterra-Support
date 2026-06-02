@@ -63,8 +63,8 @@ export default function SupportApp({
   const [token] = useState<UrlParams | null>(() => readTokenFromUrl());
 
   return (
-    <main className="min-h-screen bg-white p-4 md:p-8 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
-      <div className="max-w-[480px] mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-8 space-y-4">
+    <main className="min-h-screen bg-white md:p-8 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
+      <div className="w-full bg-white p-6 space-y-4 md:max-w-[480px] md:mx-auto md:rounded-2xl md:p-8 md:shadow-xl">
         <BrandHeader />
 
         {process.env.NODE_ENV === "development" && (
