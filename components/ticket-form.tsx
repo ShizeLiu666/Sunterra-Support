@@ -365,7 +365,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="relative rounded-xl border border-gray-200 bg-white p-5 md:p-6"
+      className="relative p-5 md:p-6"
     >
       <div className="mb-6">
         <span className="mb-2 block text-sm font-medium text-sunterra-dark">

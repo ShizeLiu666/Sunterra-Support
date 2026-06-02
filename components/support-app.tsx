@@ -64,7 +64,7 @@ export default function SupportApp({
 
   return (
     <main className="min-h-screen bg-white md:p-8 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
-      <div className="w-full bg-white p-6 space-y-4 md:max-w-[480px] md:mx-auto md:rounded-2xl md:p-8 md:shadow-xl">
+      <div className="w-full bg-white p-6 space-y-6 md:max-w-[480px] md:mx-auto md:rounded-2xl md:p-8 md:shadow-xl">
         <BrandHeader />
 
         {process.env.NODE_ENV === "development" && (
