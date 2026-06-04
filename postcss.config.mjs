@@ -127,13 +127,41 @@
  * keep the `--webpack` flag if you ever revisit the script.
  */
 
+// ── Dev-only opt-out ────────────────────────────────────────────────────────
+// `next build` (production) NEVER sets POSTCSS_SKIP_FALLBACKS, so the FULL
+// plugin chain below runs unchanged for every production build. Only the
+// local dev command opts out:
+//
+//   POSTCSS_SKIP_FALLBACKS=1 next dev --webpack
+//
+// Why an explicit var and NOT NODE_ENV: this project's `.env.local` pins
+// NODE_ENV=development, and that value leaks into `next build` (Next prints
+// the "non-standard NODE_ENV" warning). Branching on NODE_ENV would risk
+// dropping these fallbacks from the PRODUCTION build. An explicit opt-out
+// var is fail-safe: when absent (always the case in CI / Vercel build), the
+// full chain runs.
+//
+// Why dev must skip them: the four @csstools/* + postcss-nesting plugins are
+// ESM-only, and Next 16's dev PostCSS transform (turbopack-node) loads
+// plugins with require(), which cannot load ESM → dev throws ERR_REQUIRE_ESM
+// on globals.css. These fallbacks only matter for old Android WebView
+// (Chrome 80–91); local dev runs on a modern browser and does not need them.
+const skipOldWebViewFallbacks = process.env.POSTCSS_SKIP_FALLBACKS === "1";
+
+// Old-Android-WebView (Chrome 80–91) fallback plugins. Ordering is
+// load-bearing — see the ordering rationale above. Spreading this object
+// preserves declaration order right after `@tailwindcss/postcss`.
+const oldWebViewFallbacks = {
+  "@csstools/postcss-cascade-layers": {},
+  "postcss-nesting": {},
+  "@csstools/postcss-color-mix-function": { preserve: true },
+  "@csstools/postcss-oklab-function": { preserve: true },
+};
+
 const config = {
   plugins: {
     "@tailwindcss/postcss": {},
-    "@csstools/postcss-cascade-layers": {},
-    "postcss-nesting": {},
-    "@csstools/postcss-color-mix-function": { preserve: true },
-    "@csstools/postcss-oklab-function": { preserve: true },
+    ...(skipOldWebViewFallbacks ? {} : oldWebViewFallbacks),
   },
 };
 

@@ -6,7 +6,9 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type Dispatch,
   type FormEvent,
+  type SetStateAction,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -22,9 +24,29 @@ import {
 import imageCompression from "browser-image-compression";
 import type { InstallationData, UrlParams } from "@/types/installation";
 
+type TicketView = "form" | "confirm";
+
 interface TicketFormProps {
   installationData: InstallationData;
   token: UrlParams | null;
+  problemType: string;
+  setProblemType: Dispatch<SetStateAction<string>>;
+  description: string;
+  setDescription: Dispatch<SetStateAction<string>>;
+  photos: File[];
+  setPhotos: Dispatch<SetStateAction<File[]>>;
+  view: TicketView;
+  setView: Dispatch<SetStateAction<TicketView>>;
+  /** Pre-gated error for the problem-type group (null when hidden/valid). */
+  problemTypeError?: string | null;
+  /** Pre-gated error for the description field (null when hidden/valid). */
+  descriptionError?: string | null;
+  /** Marks problem-type / description as touched once interacted with. */
+  onFieldTouched?: (field: "problemType" | "description") => void;
+  /** True when every required field passes validation. */
+  canReview: boolean;
+  /** Called when the user taps Review so the parent reveals all errors. */
+  onReviewAttempt: () => void;
 }
 
 interface SubmitResponseBody {
@@ -130,6 +152,54 @@ function counterColorClass(length: number): string {
 }
 
 /**
+ * Read-only label/value row used by the confirm view. Empty values render a
+ * muted "N/A" so the customer can see at a glance what is missing.
+ */
+function ReviewRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+}) {
+  const hasValue = !!(value && value.trim());
+  return (
+    <div className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+      <span className="shrink-0 text-sm text-sunterra-dark/60">{label}</span>
+      <span
+        className={`break-words text-right text-sm ${
+          hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
+        } ${mono ? "font-mono" : ""}`}
+      >
+        {hasValue ? value : "N/A"}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Read-only full-width block for longer text (the description) in the confirm
+ * view, preserving line breaks.
+ */
+function ReviewBlock({ label, value }: { label: string; value?: string }) {
+  const hasValue = !!(value && value.trim());
+  return (
+    <div className="py-2.5 first:pt-0 last:pb-0">
+      <span className="mb-1 block text-sm text-sunterra-dark/60">{label}</span>
+      <p
+        className={`whitespace-pre-wrap break-words text-sm ${
+          hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
+        }`}
+      >
+        {hasValue ? value : "N/A"}
+      </p>
+    </div>
+  );
+}
+
+/**
  * Reads a File and returns its base64-encoded content (WITHOUT the
  * "data:...;base64," prefix). Returns null on failure.
  */
@@ -175,12 +245,25 @@ async function compressPhoto(file: File): Promise<File | null> {
   }
 }
 
-export function TicketForm({ installationData, token }: TicketFormProps) {
+export function TicketForm({
+  installationData,
+  token,
+  problemType,
+  setProblemType,
+  description,
+  setDescription,
+  photos,
+  setPhotos,
+  view,
+  setView,
+  problemTypeError,
+  descriptionError,
+  onFieldTouched,
+  canReview,
+  onReviewAttempt,
+}: TicketFormProps) {
   const router = useRouter();
 
-  const [problemType, setProblemType] = useState<string>("");
-  const [description, setDescription] = useState("");
-  const [photos, setPhotos] = useState<File[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStage, setSubmitStage] = useState<
@@ -203,6 +286,16 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
   }, [previewUrls]);
 
   const atMaxPhotos = photos.length >= MAX_PHOTOS;
+
+  // When we switch into the confirm view, jump to the top so the customer
+  // starts reading from the "Review your request" heading. The confirm view
+  // is intentionally allowed to overflow one screen (it can hold several
+  // photos) — we only reset the scroll position on entry.
+  useEffect(() => {
+    if (view === "confirm" && typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+    }
+  }, [view]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -235,6 +328,18 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
   const removePhoto = (index: number) => {
     setPhotos(photos.filter((_, i) => i !== index));
     setPhotoError(null);
+  };
+
+  // Form-view primary action. The Review button is intentionally always
+  // clickable: tapping it reveals every field's error (via onReviewAttempt)
+  // so the user sees exactly what's missing, instead of facing a silently
+  // greyed-out button. We only advance to the confirm view when valid.
+  const handleReview = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onReviewAttempt();
+    if (!canReview) return;
+    setSubmitError(null);
+    setView("confirm");
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -313,6 +418,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
     };
     if (installationData.name) formPayload.customerName = installationData.name;
     if (installationData.email) formPayload.email = installationData.email;
+    if (installationData.mobile) formPayload.mobile = installationData.mobile;
     if (installationData.address) formPayload.installationStreet = installationData.address;
 
     try {
@@ -362,14 +468,123 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
     }
   };
 
+  if (view === "confirm") {
+    const selectedType = PROBLEM_TYPES.find((t) => t.id === problemType);
+    const sns = installationData.sns ?? [];
+    const snLabel = sns.length > 1 ? "Serial numbers" : "Serial number";
+    const snValue = sns.length > 0 ? sns.join(", ") : undefined;
+
+    return (
+      <form onSubmit={handleSubmit} className="relative p-5 md:p-6">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-sunterra-dark">
+            Review your request
+          </h2>
+          <p className="mt-1 text-sm text-sunterra-dark/60">
+            Please check the details below before submitting.
+          </p>
+        </div>
+
+        {/* What you entered */}
+        <section className="mb-4 rounded-xl border border-gray-200 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-sunterra-dark">
+            Your information
+          </h3>
+          <dl className="divide-y divide-gray-100">
+            <ReviewRow label="Name" value={installationData.name} />
+            <ReviewRow label="Email" value={installationData.email} />
+            <ReviewRow label="Mobile" value={installationData.mobile} />
+            <ReviewRow label="Address" value={installationData.address} />
+            <ReviewRow label="Problem type" value={selectedType?.label} />
+            <ReviewBlock label="Description" value={description} />
+          </dl>
+
+          {photos.length > 0 && (
+            <div className="mt-3">
+              <span className="mb-2 block text-sm text-sunterra-dark/60">
+                Photos
+              </span>
+              <ul className="flex flex-wrap gap-2">
+                {photos.map((file, index) => (
+                  <li key={`${file.name}-${file.size}-${index}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewUrls[index]}
+                      alt={`Photo ${index + 1}`}
+                      className="h-20 w-20 rounded-lg border border-gray-200 object-cover"
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        {/* From your installation (system-provided, read-only) */}
+        <section className="mb-4 rounded-xl bg-sunterra-light/40 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-sunterra-dark">
+            From your installation
+          </h3>
+          <dl className="divide-y divide-sunterra-primary/15">
+            <ReviewRow label={snLabel} value={snValue} mono />
+            <ReviewRow label="Device type" value={undefined} />
+            <ReviewRow label="Device model" value={undefined} />
+          </dl>
+        </section>
+
+        <div className="sticky bottom-0 -mx-5 md:static md:mx-0">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none h-6 bg-gradient-to-b from-transparent to-white md:hidden"
+          />
+          <div className="space-y-2 bg-white px-5 pb-5 pt-1 md:bg-transparent md:p-0">
+            {submitError && (
+              <div
+                role="alert"
+                className="mb-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              >
+                {submitError}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50] disabled:cursor-not-allowed disabled:bg-sunterra-primary/60 disabled:hover:bg-sunterra-primary/60"
+            >
+              {submitStage === "preparing_photos"
+                ? "Preparing photos..."
+                : submitStage === "submitting"
+                  ? "Submitting..."
+                  : submitStage === "attaching_photos"
+                    ? "Attaching photos..."
+                    : "Confirm & submit"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("form")}
+              disabled={isSubmitting}
+              className="block h-12 w-full rounded-lg border border-gray-300 bg-white text-base font-medium text-sunterra-dark transition-colors duration-150 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Back to edit
+            </button>
+          </div>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={handleReview}
       className="relative p-5 md:p-6"
     >
       <div className="mb-6">
         <span className="mb-2 block text-sm font-medium text-sunterra-dark">
           Problem type
+          <span className="text-red-500" aria-hidden="true">
+            {" "}
+            *
+          </span>
         </span>
         <div role="radiogroup" aria-label="Problem type" className="grid grid-cols-2 gap-3">
           {PROBLEM_TYPES.map((option) => {
@@ -409,6 +624,11 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
             );
           })}
         </div>
+        {problemTypeError && (
+          <p role="alert" className="mt-2 text-xs text-red-500">
+            {problemTypeError}
+          </p>
+        )}
       </div>
 
       <div className="mb-6">
@@ -417,6 +637,10 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           className="mb-2 block text-sm font-medium text-sunterra-dark"
         >
           Describe the issue
+          <span className="text-red-500" aria-hidden="true">
+            {" "}
+            *
+          </span>
         </label>
         <textarea
           id="description"
@@ -424,6 +648,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           onChange={(event) =>
             setDescription(event.target.value.slice(0, MAX_DESCRIPTION_LENGTH))
           }
+          onBlur={() => onFieldTouched?.("description")}
           rows={4}
           maxLength={MAX_DESCRIPTION_LENGTH}
           inputMode="text"
@@ -431,8 +656,17 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           placeholder="Please tell us what is happening..."
           className="block max-h-[150px] w-full resize-none overflow-y-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-sunterra-dark placeholder:text-gray-400 focus:border-sunterra-primary focus:outline-none disabled:opacity-60"
         />
-        <div className={`mt-1 text-right text-xs ${counterColorClass(description.length)}`}>
-          {description.length}/{MAX_DESCRIPTION_LENGTH}
+        <div className="mt-1 flex items-start justify-between gap-3">
+          {descriptionError ? (
+            <p role="alert" className="text-xs text-red-500">
+              {descriptionError}
+            </p>
+          ) : (
+            <span />
+          )}
+          <span className={`shrink-0 text-xs ${counterColorClass(description.length)}`}>
+            {description.length}/{MAX_DESCRIPTION_LENGTH}
+          </span>
         </div>
       </div>
 
@@ -513,16 +747,10 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           )}
           <button
             type="submit"
-            disabled={isSubmitting || !problemType || description.trim().length === 0}
+            disabled={isSubmitting}
             className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50] disabled:cursor-not-allowed disabled:bg-sunterra-primary/60 disabled:hover:bg-sunterra-primary/60"
           >
-            {submitStage === "preparing_photos"
-              ? "Preparing photos..."
-              : submitStage === "submitting"
-                ? "Submitting..."
-                : submitStage === "attaching_photos"
-                  ? "Attaching photos..."
-                  : "Submit ticket"}
+            Review
           </button>
           <p className="mt-2 text-center text-xs text-sunterra-dark/60">
             We&apos;ll respond within 1 business day

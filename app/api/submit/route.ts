@@ -289,6 +289,23 @@ export async function POST(request: Request): Promise<Response> {
   const email = body.form.email ?? body.token.email;
   const mobile = body.form.mobile;
 
+  // Defense in depth: the client gates the Review button on these fields, but
+  // a direct POST could skip the UI entirely. Email and mobile are mandatory
+  // for every ticket. We enforce non-empty only here; format checks live
+  // client-side so we don't reject legitimate edge-case numbers server-side.
+  if (!email || email.trim() === "") {
+    return NextResponse.json(
+      { success: false, error: "Email is required." },
+      { status: 400 }
+    );
+  }
+  if (!mobile || mobile.trim() === "") {
+    return NextResponse.json(
+      { success: false, error: "Mobile number is required." },
+      { status: 400 }
+    );
+  }
+
   const formHasAddress = !!(
     body.form.installationStreet ||
     body.form.installationSuburb ||

@@ -4,10 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { Pencil, Check } from "lucide-react";
 import type { InstallationData } from "@/types/installation";
 
+type ContactField = "name" | "email" | "mobile" | "address";
+
 interface InstallationInfoProps {
   data: InstallationData;
   /** Called when user finishes editing a field (onBlur) */
   onChange?: (data: InstallationData) => void;
+  /** Per-field error message to show under the input (already gated by the
+   *  parent on touched/review-attempted state — render as-is). */
+  errors?: Partial<Record<ContactField, string | null>>;
+  /** Marks a field as "touched" once the user has edited and left it. */
+  onFieldTouched?: (field: ContactField) => void;
 }
 
 /**
@@ -20,6 +27,8 @@ interface InstallationInfoProps {
 export default function InstallationInfo({
   data,
   onChange,
+  errors,
+  onFieldTouched,
 }: InstallationInfoProps) {
   return (
     <section className="bg-sunterra-light/40 rounded-xl p-4 md:p-5">
@@ -36,22 +45,41 @@ export default function InstallationInfo({
       <div className="divide-y divide-sunterra-primary/15">
         <EditableRow
           label="Name"
+          required
           value={data.name}
           placeholder="Add your name"
+          error={errors?.name}
+          onTouched={() => onFieldTouched?.("name")}
           onSave={(v) => onChange?.({ ...data, name: v })}
         />
         <EditableRow
           label="Email"
+          required
           value={data.email}
           placeholder="Add your email"
           type="email"
+          error={errors?.email}
+          onTouched={() => onFieldTouched?.("email")}
           onSave={(v) => onChange?.({ ...data, email: v })}
         />
         <EditableRow
+          label="Mobile"
+          required
+          value={data.mobile}
+          placeholder="0412 345 678"
+          type="tel"
+          error={errors?.mobile}
+          onTouched={() => onFieldTouched?.("mobile")}
+          onSave={(v) => onChange?.({ ...data, mobile: v })}
+        />
+        <EditableRow
           label="Address"
+          required
           value={data.address}
           placeholder="Add your address"
           multiline
+          error={errors?.address}
+          onTouched={() => onFieldTouched?.("address")}
           onSave={(v) => onChange?.({ ...data, address: v })}
         />
 
@@ -115,8 +143,13 @@ interface EditableRowProps {
   label: string;
   value: string | undefined;
   placeholder: string;
-  type?: "text" | "email";
+  type?: "text" | "email" | "tel";
   multiline?: boolean;
+  required?: boolean;
+  /** Pre-gated error message from the parent; renders under the input. */
+  error?: string | null;
+  /** Fired when the user leaves edit mode (blur / Enter / Escape). */
+  onTouched?: () => void;
   onSave: (value: string) => void;
 }
 
@@ -126,6 +159,9 @@ function EditableRow({
   placeholder,
   type = "text",
   multiline = false,
+  required = false,
+  error,
+  onTouched,
   onSave,
 }: EditableRowProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -157,6 +193,7 @@ function EditableRow({
   function handleSave() {
     const trimmed = draft.trim();
     setIsEditing(false);
+    onTouched?.();
     if (trimmed !== (value ?? "")) {
       onSave(trimmed);
     }
@@ -170,6 +207,7 @@ function EditableRow({
       e.preventDefault();
       setDraft(value ?? "");
       setIsEditing(false);
+      onTouched?.();
     }
   }
 
@@ -180,6 +218,12 @@ function EditableRow({
       <div className="flex items-start justify-between gap-3">
         <label className="text-sm text-sunterra-dark/60 shrink-0 pt-0.5">
           {label}
+          {required && (
+            <span className="text-red-500" aria-hidden="true">
+              {" "}
+              *
+            </span>
+          )}
         </label>
 
         <div className="flex-1 min-w-0 flex items-start justify-end gap-2">
@@ -229,6 +273,14 @@ function EditableRow({
           )}
         </div>
       </div>
+      {error && (
+        <p
+          role="alert"
+          className="mt-1.5 text-right text-xs text-red-500"
+        >
+          {error}
+        </p>
+      )}
     </div>
   );
 }

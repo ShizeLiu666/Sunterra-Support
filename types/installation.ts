@@ -24,6 +24,7 @@ export interface InstallationData {
   // Optional (from ShinePhone)
   name?: string; // Customer name (could be account name, user-editable)
   email?: string; // Customer email (primary contact method)
+  mobile?: string; // Customer mobile (user-entered; not part of the URL token)
   address?: string; // Installation address
   inverterModel?: string; // Inverter model (e.g., "MIN3000TL-XH")
   language?: string; // Language code (e.g., "en-AU", "zh-CN")
