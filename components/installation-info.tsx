@@ -267,7 +267,7 @@ function EditableRow({
                 onKeyDown={handleKeyDown}
                 maxLength={maxLength}
                 rows={2}
-                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none break-words"
+                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none break-words [overflow-wrap:anywhere]"
               />
             ) : (
               <input
@@ -290,7 +290,7 @@ function EditableRow({
               aria-label={`Edit ${label}`}
             >
               <span
-                className={`min-w-0 text-sm break-words ${
+                className={`min-w-0 text-sm break-words [overflow-wrap:anywhere] ${
                   hasValue
                     ? "text-sunterra-dark"
                     : "text-sunterra-dark/40 italic"

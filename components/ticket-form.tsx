@@ -187,7 +187,7 @@ function ReviewRow({
     <div className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
       <span className="shrink-0 text-sm text-sunterra-dark/60">{label}</span>
       <span
-        className={`min-w-0 break-words text-right text-sm ${
+        className={`min-w-0 break-words [overflow-wrap:anywhere] text-right text-sm ${
           hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
         } ${mono ? "font-mono" : ""}`}
       >
