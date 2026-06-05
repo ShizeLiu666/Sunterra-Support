@@ -207,7 +207,7 @@ function ReviewBlock({ label, value }: { label: string; value?: string }) {
     <div className="py-2.5 first:pt-0 last:pb-0">
       <span className="mb-1 block text-sm text-sunterra-dark/60">{label}</span>
       <p
-        className={`whitespace-pre-wrap break-words text-sm ${
+        className={`max-h-40 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-sm ${
           hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
         }`}
       >
