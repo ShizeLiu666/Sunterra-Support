@@ -13,6 +13,8 @@ interface InstallationInfoProps {
   /** Per-field error message to show under the input (already gated by the
    *  parent on touched/review-attempted state — render as-is). */
   errors?: Partial<Record<ContactField, string | null>>;
+  /** Per-field current validity; controls the required star color immediately. */
+  valid?: Partial<Record<ContactField, boolean>>;
   /** Marks a field as "touched" once the user has edited and left it. */
   onFieldTouched?: (field: ContactField) => void;
 }
@@ -28,6 +30,7 @@ export default function InstallationInfo({
   data,
   onChange,
   errors,
+  valid,
   onFieldTouched,
 }: InstallationInfoProps) {
   return (
@@ -49,6 +52,7 @@ export default function InstallationInfo({
           value={data.name}
           placeholder="Add your name"
           error={errors?.name}
+          isValid={valid?.name}
           onTouched={() => onFieldTouched?.("name")}
           onSave={(v) => onChange?.({ ...data, name: v })}
         />
@@ -59,6 +63,7 @@ export default function InstallationInfo({
           placeholder="Add your email"
           type="email"
           error={errors?.email}
+          isValid={valid?.email}
           onTouched={() => onFieldTouched?.("email")}
           onSave={(v) => onChange?.({ ...data, email: v })}
         />
@@ -69,6 +74,7 @@ export default function InstallationInfo({
           placeholder="0412 345 678"
           type="tel"
           error={errors?.mobile}
+          isValid={valid?.mobile}
           onTouched={() => onFieldTouched?.("mobile")}
           onSave={(v) => onChange?.({ ...data, mobile: v })}
         />
@@ -79,6 +85,7 @@ export default function InstallationInfo({
           placeholder="Add your address"
           multiline
           error={errors?.address}
+          isValid={valid?.address}
           onTouched={() => onFieldTouched?.("address")}
           onSave={(v) => onChange?.({ ...data, address: v })}
         />
@@ -146,6 +153,8 @@ interface EditableRowProps {
   type?: "text" | "email" | "tel";
   multiline?: boolean;
   required?: boolean;
+  /** Current validity for required rows. Drives star color, not error timing. */
+  isValid?: boolean;
   /** Pre-gated error message from the parent; renders under the input. */
   error?: string | null;
   /** Fired when the user leaves edit mode (blur / Enter / Escape). */
@@ -160,6 +169,7 @@ function EditableRow({
   type = "text",
   multiline = false,
   required = false,
+  isValid = false,
   error,
   onTouched,
   onSave,
@@ -212,14 +222,21 @@ function EditableRow({
   }
 
   const hasValue = !!(value && value.trim());
+  const starColorClass = isValid ? "text-sunterra-primary" : "text-red-500";
 
   return (
-    <div className="py-3 first:pt-0 last:pb-0">
+    <div
+      className="py-3 first:pt-0 last:pb-0"
+      data-validation-field={label.toLowerCase()}
+    >
       <div className="flex items-start justify-between gap-3">
         <label className="text-sm text-sunterra-dark/60 shrink-0 pt-0.5">
           {label}
           {required && (
-            <span className="text-red-500" aria-hidden="true">
+            <span
+              className={`transition-colors duration-150 ${starColorClass}`}
+              aria-hidden="true"
+            >
               {" "}
               *
             </span>
@@ -253,6 +270,7 @@ function EditableRow({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
+              data-editable-trigger="true"
               className="group flex items-start justify-end gap-1.5 text-right min-w-0 flex-1 hover:opacity-80 transition-opacity"
               aria-label={`Edit ${label}`}
             >

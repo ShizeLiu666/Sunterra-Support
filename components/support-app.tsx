@@ -21,6 +21,15 @@ type TicketField =
   | "problemType"
   | "description";
 
+const FIELD_ORDER: readonly TicketField[] = [
+  "name",
+  "email",
+  "mobile",
+  "address",
+  "problemType",
+  "description",
+];
+
 interface SupportAppProps {
   initialData: InstallationData;
   isDevFallback?: boolean;
@@ -110,9 +119,12 @@ export default function SupportApp({
     description: description.trim() ? null : "Please describe the issue",
   };
   const canReview = Object.values(rawErrors).every((e) => e === null);
+  const firstInvalidField =
+    FIELD_ORDER.find((field) => rawErrors[field] !== null) ?? null;
 
   const visibleError = (field: TicketField): string | null =>
     touched[field] || reviewAttempted ? rawErrors[field] : null;
+  const isValid = (field: TicketField): boolean => rawErrors[field] === null;
 
   // Called by TicketForm when the user taps Review. Reveals every field's
   // error (so untouched-but-invalid fields surface) and lets the form decide
@@ -150,6 +162,12 @@ export default function SupportApp({
               mobile: visibleError("mobile"),
               address: visibleError("address"),
             }}
+            valid={{
+              name: isValid("name"),
+              email: isValid("email"),
+              mobile: isValid("mobile"),
+              address: isValid("address"),
+            }}
             onFieldTouched={markTouched}
           />
         )}
@@ -166,6 +184,9 @@ export default function SupportApp({
           setView={setView}
           problemTypeError={visibleError("problemType")}
           descriptionError={visibleError("description")}
+          problemTypeValid={isValid("problemType")}
+          descriptionValid={isValid("description")}
+          firstInvalidField={firstInvalidField}
           onFieldTouched={markTouched}
           canReview={canReview}
           onReviewAttempt={handleReviewAttempt}

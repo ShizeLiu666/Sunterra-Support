@@ -25,6 +25,13 @@ import imageCompression from "browser-image-compression";
 import type { InstallationData, UrlParams } from "@/types/installation";
 
 type TicketView = "form" | "confirm";
+type ValidationField =
+  | "name"
+  | "email"
+  | "mobile"
+  | "address"
+  | "problemType"
+  | "description";
 
 interface TicketFormProps {
   installationData: InstallationData;
@@ -41,6 +48,12 @@ interface TicketFormProps {
   problemTypeError?: string | null;
   /** Pre-gated error for the description field (null when hidden/valid). */
   descriptionError?: string | null;
+  /** Current validity for the problem-type required star. */
+  problemTypeValid: boolean;
+  /** Current validity for the description required star. */
+  descriptionValid: boolean;
+  /** First invalid field in visual order, supplied by the parent validator. */
+  firstInvalidField: ValidationField | null;
   /** Marks problem-type / description as touched once interacted with. */
   onFieldTouched?: (field: "problemType" | "description") => void;
   /** True when every required field passes validation. */
@@ -151,6 +164,11 @@ function counterColorClass(length: number): string {
   return "text-sunterra-dark/50";
 }
 
+function requiredStarClass(isValid: boolean): string {
+  if (isValid) return "text-sunterra-primary";
+  return "text-red-500";
+}
+
 /**
  * Read-only label/value row used by the confirm view. Empty values render a
  * muted "N/A" so the customer can see at a glance what is missing.
@@ -258,6 +276,9 @@ export function TicketForm({
   setView,
   problemTypeError,
   descriptionError,
+  problemTypeValid,
+  descriptionValid,
+  firstInvalidField,
   onFieldTouched,
   canReview,
   onReviewAttempt,
@@ -330,6 +351,34 @@ export function TicketForm({
     setPhotoError(null);
   };
 
+  const focusField = (field: ValidationField) => {
+    const target = document.querySelector<HTMLElement>(
+      `[data-validation-field="${field}"]`
+    );
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    window.setTimeout(() => {
+      const editableTrigger = target.querySelector<HTMLButtonElement>(
+        "[data-editable-trigger='true']"
+      );
+      if (editableTrigger) {
+        editableTrigger.click();
+        return;
+      }
+
+      const focusable = target.matches(
+        "button, input, textarea, select, [tabindex]:not([tabindex='-1'])"
+      )
+        ? target
+        : target.querySelector<HTMLElement>(
+            "button, input, textarea, select, [tabindex]:not([tabindex='-1'])"
+          );
+      focusable?.focus({ preventScroll: true });
+    }, 300);
+  };
+
   // Form-view primary action. The Review button is intentionally always
   // clickable: tapping it reveals every field's error (via onReviewAttempt)
   // so the user sees exactly what's missing, instead of facing a silently
@@ -337,7 +386,12 @@ export function TicketForm({
   const handleReview = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onReviewAttempt();
-    if (!canReview) return;
+    if (!canReview) {
+      if (firstInvalidField) {
+        window.requestAnimationFrame(() => focusField(firstInvalidField));
+      }
+      return;
+    }
     setSubmitError(null);
     setView("confirm");
   };
@@ -475,7 +529,10 @@ export function TicketForm({
     const snValue = sns.length > 0 ? sns.join(", ") : undefined;
 
     return (
-      <form onSubmit={handleSubmit} className="relative p-5 md:p-6">
+      <form
+        onSubmit={handleSubmit}
+        className="relative px-5 pb-5 pt-0 md:px-6 md:pb-6 md:pt-0"
+      >
         <div className="mb-4">
           <h2 className="text-base font-semibold text-sunterra-dark">
             Review your request
@@ -581,12 +638,22 @@ export function TicketForm({
       <div className="mb-6">
         <span className="mb-2 block text-sm font-medium text-sunterra-dark">
           Problem type
-          <span className="text-red-500" aria-hidden="true">
+          <span
+            className={`transition-colors duration-150 ${
+              requiredStarClass(problemTypeValid)
+            }`}
+            aria-hidden="true"
+          >
             {" "}
             *
           </span>
         </span>
-        <div role="radiogroup" aria-label="Problem type" className="grid grid-cols-2 gap-3">
+        <div
+          role="radiogroup"
+          aria-label="Problem type"
+          data-validation-field="problemType"
+          className="grid grid-cols-2 gap-3"
+        >
           {PROBLEM_TYPES.map((option) => {
             const selected = problemType === option.id;
             const Icon = option.Icon;
@@ -637,7 +704,12 @@ export function TicketForm({
           className="mb-2 block text-sm font-medium text-sunterra-dark"
         >
           Describe the issue
-          <span className="text-red-500" aria-hidden="true">
+          <span
+            className={`transition-colors duration-150 ${
+              requiredStarClass(descriptionValid)
+            }`}
+            aria-hidden="true"
+          >
             {" "}
             *
           </span>
@@ -654,6 +726,7 @@ export function TicketForm({
           inputMode="text"
           disabled={isSubmitting}
           placeholder="Please tell us what is happening..."
+          data-validation-field="description"
           className="block max-h-[150px] w-full resize-none overflow-y-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-sunterra-dark placeholder:text-gray-400 focus:border-sunterra-primary focus:outline-none disabled:opacity-60"
         />
         <div className="mt-1 flex items-start justify-between gap-3">
