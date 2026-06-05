@@ -207,7 +207,7 @@ function ReviewBlock({ label, value }: { label: string; value?: string }) {
     <div className="py-2.5 first:pt-0 last:pb-0">
       <span className="mb-1 block text-sm text-sunterra-dark/60">{label}</span>
       <p
-        className={`max-h-40 overflow-y-auto overscroll-contain whitespace-pre-wrap break-words text-sm ${
+        className={`whitespace-pre-wrap break-words text-sm ${
           hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
         }`}
       >
@@ -538,7 +538,12 @@ export function TicketForm({
             Review your request
           </h2>
           <p className="mt-1 text-sm text-sunterra-dark/60">
-            Please check the details below before submitting.
+            Please confirm the details below are{" "}
+            <strong className="font-semibold text-inherit">accurate</strong>{" "}
+            and reflect your{" "}
+            <strong className="font-semibold text-inherit">
+              actual situation
+            </strong>. Our team will use this information to assist you.
           </p>
         </div>
 
