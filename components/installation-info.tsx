@@ -6,6 +6,13 @@ import type { InstallationData } from "@/types/installation";
 
 type ContactField = "name" | "email" | "mobile" | "address";
 
+const FIELD_MAX_LENGTH = {
+  name: 50,
+  email: 50,
+  mobile: 20,
+  address: 50,
+} as const;
+
 interface InstallationInfoProps {
   data: InstallationData;
   /** Called when user finishes editing a field (onBlur) */
@@ -51,6 +58,7 @@ export default function InstallationInfo({
           required
           value={data.name}
           placeholder="Add your name"
+          maxLength={FIELD_MAX_LENGTH.name}
           error={errors?.name}
           isValid={valid?.name}
           onTouched={() => onFieldTouched?.("name")}
@@ -62,6 +70,7 @@ export default function InstallationInfo({
           value={data.email}
           placeholder="Add your email"
           type="email"
+          maxLength={FIELD_MAX_LENGTH.email}
           error={errors?.email}
           isValid={valid?.email}
           onTouched={() => onFieldTouched?.("email")}
@@ -73,6 +82,7 @@ export default function InstallationInfo({
           value={data.mobile}
           placeholder="0412 345 678"
           type="tel"
+          maxLength={FIELD_MAX_LENGTH.mobile}
           error={errors?.mobile}
           isValid={valid?.mobile}
           onTouched={() => onFieldTouched?.("mobile")}
@@ -84,6 +94,7 @@ export default function InstallationInfo({
           value={data.address}
           placeholder="Add your address"
           multiline
+          maxLength={FIELD_MAX_LENGTH.address}
           error={errors?.address}
           isValid={valid?.address}
           onTouched={() => onFieldTouched?.("address")}
@@ -151,6 +162,7 @@ interface EditableRowProps {
   value: string | undefined;
   placeholder: string;
   type?: "text" | "email" | "tel";
+  maxLength?: number;
   multiline?: boolean;
   required?: boolean;
   /** Current validity for required rows. Drives star color, not error timing. */
@@ -167,6 +179,7 @@ function EditableRow({
   value,
   placeholder,
   type = "text",
+  maxLength,
   multiline = false,
   required = false,
   isValid = false,
@@ -252,8 +265,9 @@ function EditableRow({
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
+                maxLength={maxLength}
                 rows={2}
-                className="flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none"
+                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none break-words"
               />
             ) : (
               <input
@@ -263,7 +277,8 @@ function EditableRow({
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
-                className="flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 text-right"
+                maxLength={maxLength}
+                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 text-right"
               />
             )
           ) : (
@@ -275,7 +290,7 @@ function EditableRow({
               aria-label={`Edit ${label}`}
             >
               <span
-                className={`text-sm break-words ${
+                className={`min-w-0 text-sm break-words ${
                   hasValue
                     ? "text-sunterra-dark"
                     : "text-sunterra-dark/40 italic"
