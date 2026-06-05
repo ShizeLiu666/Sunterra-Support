@@ -528,6 +528,15 @@ export function TicketForm({
     const snLabel = sns.length > 1 ? "Serial numbers" : "Serial number";
     const snValue = sns.length > 0 ? sns.join(", ") : undefined;
 
+    // Device context from the signed URL (spec v1.1). Display-only — never
+    // written to Salesforce. Defensive: when absent (shouldn't happen under
+    // strict v1.1), ReviewRow falls back to a muted "N/A".
+    const rawDeviceType = installationData.deviceType?.trim();
+    const deviceTypeLabel = rawDeviceType
+      ? rawDeviceType.charAt(0).toUpperCase() + rawDeviceType.slice(1)
+      : undefined;
+    const deviceModelValue = installationData.deviceModel?.trim() || undefined;
+
     return (
       <form
         onSubmit={handleSubmit}
@@ -589,8 +598,8 @@ export function TicketForm({
           </h3>
           <dl className="divide-y divide-sunterra-primary/15">
             <ReviewRow label={snLabel} value={snValue} mono />
-            <ReviewRow label="Device type" value={undefined} />
-            <ReviewRow label="Device model" value={undefined} />
+            <ReviewRow label="Device type" value={deviceTypeLabel} />
+            <ReviewRow label="Device model" value={deviceModelValue} />
           </dl>
         </section>
 

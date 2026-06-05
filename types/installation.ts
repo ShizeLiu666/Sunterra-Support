@@ -26,6 +26,12 @@ export interface InstallationData {
   email?: string; // Customer email (primary contact method)
   mobile?: string; // Customer mobile (user-entered; not part of the URL token)
   address?: string; // Installation address
+
+  // spec v1.1: selected device context (describes the chosen `sn`).
+  deviceType?: "inverter" | "battery"; // §3.2 enum; undefined when sent empty
+  deviceModel?: string; // §3.2 model of the selected device
+
+  // Legacy/compat fields (pre-v1.1 links).
   inverterModel?: string; // Inverter model (e.g., "MIN3000TL-XH")
   language?: string; // Language code (e.g., "en-AU", "zh-CN")
 }
@@ -41,8 +47,19 @@ export interface UrlParams {
   name?: string;
   email?: string;
   address?: string;
+
+  // spec v1.1 device-selection keys (raw wire values; may be empty string).
+  deviceType?: string; // "inverter" | "battery" once validated
+  deviceModel?: string;
+
+  // Legacy/compat keys (pre-v1.1 links).
   inverterModel?: string;
   language?: string;
+
+  // Generic carrier for ANY signed URL key. The client forwards every query
+  // param verbatim and the server re-signs them all, so a new signed field
+  // never has to be added to a whitelist to avoid invalid_signature.
+  [key: string]: string | undefined;
 }
 
 export type TokenVerificationFailureReason =

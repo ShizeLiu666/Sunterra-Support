@@ -15,11 +15,47 @@ import {
 const MAX_CLOCK_SKEW_SECONDS = 5 * 60;
 
 /**
- * Required fields per spec §3. Used by the missing_params failure log
- * to tell us which required field(s) were absent — saves a round-trip
- * when triaging Growatt integration issues.
+ * Strict spec v1.1 §3.4: ALL eight URL keys must be present in the final
+ * URL (so they participate in the HMAC input). Missing any one → missing_params.
+ * The list is also used by the missing_params failure log to tell us which
+ * required field(s) were absent — saves a round-trip when triaging Growatt
+ * integration issues.
  */
-const REQUIRED_FIELDS = ["sn", "timestamp", "sign"] as const;
+const REQUIRED_FIELDS = [
+  "email",
+  "name",
+  "address",
+  "sn",
+  "deviceType",
+  "deviceModel",
+  "timestamp",
+  "sign",
+] as const;
+
+/**
+ * Subset of REQUIRED_FIELDS whose VALUE must be non-empty. Per spec v1.1:
+ *   - sn / timestamp / sign carry operational meaning and cannot be blank.
+ *   - deviceType / deviceModel describe the device the user explicitly
+ *     selected before entering support (§3.2), so they always have a value;
+ *     the §3.4 "ShinePhone may have no reliable value" exemption applies only
+ *     to contact/address fields.
+ * Only email / name / address may be PRESENT but empty (`key=`), since
+ * ShinePhone may genuinely lack them; they still participate in the
+ * signature exactly as `key=` (§3.4).
+ */
+const NON_EMPTY_FIELDS = new Set<string>([
+  "sn",
+  "timestamp",
+  "sign",
+  "deviceType",
+  "deviceModel",
+]);
+
+/**
+ * Allowed deviceType enum values per spec v1.1 §3.2. This integration scope
+ * is inverter/battery support only. Any other non-empty value → malformed.
+ */
+const ALLOWED_DEVICE_TYPES = new Set<string>(["inverter", "battery"]);
 
 /**
  * Keys whose VALUES are safe to log. Per the Sunterra logging policy:
@@ -34,6 +70,8 @@ const REQUIRED_FIELDS = ["sn", "timestamp", "sign"] as const;
 const NON_PII_VALUE_KEYS = new Set([
   "sn",
   "timestamp",
+  "deviceType",
+  "deviceModel",
   "inverterModel",
   "language",
 ]);
@@ -168,14 +206,20 @@ export function verifyToken(
 ): TokenVerificationResult {
   const fields = fieldsList(params);
   const sn = params.get("sn");
-  const timestampStr = params.get("timestamp");
-  const sign = params.get("sign");
 
-  if (!sn || !sn.trim() || !timestampStr || !sign) {
-    const missing = REQUIRED_FIELDS.filter((f) => {
+  // Strict v1.1 §3.4: every required key must be present. Keys in
+  // NON_EMPTY_FIELDS additionally must carry a non-empty value; the rest
+  // (email/name/address/deviceType/deviceModel) may be present-but-empty
+  // because they still participate in the signature.
+  const missing = REQUIRED_FIELDS.filter((f) => {
+    if (!params.has(f)) return true;
+    if (NON_EMPTY_FIELDS.has(f)) {
       const v = params.get(f);
       return v === null || v.trim() === "";
-    });
+    }
+    return false;
+  });
+  if (missing.length > 0) {
     logFailure({
       reason: "missing_params",
       fields,
@@ -184,6 +228,28 @@ export function verifyToken(
       extras: { missing: `[${missing.join(",")}]` },
     });
     return { valid: false, reason: "missing_params" };
+  }
+
+  // After the missing-params gate these are guaranteed present and non-empty.
+  const timestampStr = params.get("timestamp") as string;
+  const sign = params.get("sign") as string;
+
+  // Spec v1.1 §3.2: deviceType is an enum (inverter|battery). It is required
+  // non-empty (enforced by NON_EMPTY_FIELDS above), and any value outside the
+  // enum is a malformed parameter. deviceType is an enum, not PII, so log raw.
+  const deviceTypeRaw = (params.get("deviceType") ?? "").trim();
+  if (!ALLOWED_DEVICE_TYPES.has(deviceTypeRaw)) {
+    logFailure({
+      reason: "malformed",
+      fields,
+      sn,
+      context,
+      extras: {
+        cause: "device_type_enum",
+        deviceType_raw: deviceTypeRaw,
+      },
+    });
+    return { valid: false, reason: "malformed" };
   }
 
   const timestamp = parseInt(timestampStr, 10);
@@ -268,12 +334,16 @@ export function verifyToken(
 
   // Only AFTER signature verification do we split the SN list.
   // Splitting before would let an attacker influence the parse path
-  // without paying the HMAC cost.
-  const sns = parseSnList(sn);
+  // without paying the HMAC cost. `sn` is guaranteed present and non-empty
+  // here by the missing-params gate above.
+  const snValue = sn as string;
+  const sns = parseSnList(snValue);
   if (!sns) {
     // sn was syntactically valid for signing (non-empty string) but
     // either resolved to zero non-empty entries or more than MAX_SNS.
-    const partCount = sn.split(",").filter((s) => s.trim().length > 0).length;
+    const partCount = snValue
+      .split(",")
+      .filter((s) => s.trim().length > 0).length;
     logFailure({
       reason: "malformed",
       fields,
@@ -293,6 +363,9 @@ export function verifyToken(
     name: params.get("name") || undefined,
     email: params.get("email") || undefined,
     address: params.get("address") || undefined,
+    // deviceTypeRaw is validated non-empty and within the enum above.
+    deviceType: deviceTypeRaw as InstallationData["deviceType"],
+    deviceModel: params.get("deviceModel") || undefined,
     inverterModel: params.get("inverterModel") || undefined,
     language: params.get("language") || undefined,
   };

@@ -58,8 +58,14 @@ interface SubmitTokenPayload {
   name?: string;
   email?: string;
   address?: string;
+  deviceType?: string;
+  deviceModel?: string;
   inverterModel?: string;
   language?: string;
+
+  // Generic carrier: the client forwards every signed URL key and we re-sign
+  // them all, so new fields never need to be added to a whitelist here.
+  [key: string]: string | undefined;
 }
 
 interface SubmitFormPayload {
@@ -122,15 +128,6 @@ function validateBody(raw: unknown): SubmitRequestBody | null {
   if (!isString(tk.sn) || !isString(tk.timestamp) || !isString(tk.sign)) {
     return null;
   }
-  if (
-    !isOptionalString(tk.name) ||
-    !isOptionalString(tk.email) ||
-    !isOptionalString(tk.address) ||
-    !isOptionalString(tk.inverterModel) ||
-    !isOptionalString(tk.language)
-  ) {
-    return null;
-  }
 
   if (
     !isString(fm.type) ||
@@ -156,11 +153,15 @@ function validateBody(raw: unknown): SubmitRequestBody | null {
     timestamp: tk.timestamp,
     sign: tk.sign,
   };
-  if (tk.name !== undefined) token.name = tk.name;
-  if (tk.email !== undefined) token.email = tk.email;
-  if (tk.address !== undefined) token.address = tk.address;
-  if (tk.inverterModel !== undefined) token.inverterModel = tk.inverterModel;
-  if (tk.language !== undefined) token.language = tk.language;
+  // Preserve EVERY other token field generically (no whitelist). Empty-string
+  // values are kept (they're signed as `key=`); a present-but-non-string value
+  // is treated as a malformed body.
+  for (const [key, value] of Object.entries(tk)) {
+    if (key === "sn" || key === "timestamp" || key === "sign") continue;
+    if (value === undefined) continue;
+    if (!isString(value)) return null;
+    token[key] = value;
+  }
 
   const form: SubmitFormPayload = {
     type: fm.type,
@@ -245,24 +246,17 @@ export async function POST(request: Request): Promise<Response> {
   }
   body.photos = photosResult.photos;
 
+  // Generic re-verification: forward EVERY token field we received back into
+  // the canonical string, with no whitelist. Empty-string fields are kept
+  // (signed as `key=`, matching `lib/hmac.ts::buildSignString` which omits
+  // only undefined). This guarantees the rebuilt canonical is identical to the
+  // URL Growatt signed — adding a new signed field (deviceType, deviceModel,
+  // …) can never again silently drop a key and cause invalid_signature on
+  // submit even though the original URL validated on /page.tsx.
   const urlParams = new URLSearchParams();
-  urlParams.set("sn", body.token.sn);
-  urlParams.set("timestamp", body.token.timestamp);
-  urlParams.set("sign", body.token.sign);
-  // Use `!== undefined` (NOT truthy) so empty-string fields participate in
-  // the rebuilt canonical, matching `lib/hmac.ts::buildSignString` which
-  // skips ONLY undefined values (empty strings are signed as `key=`).
-  // Growatt's ShinePhone keeps empty optional fields in the URL — when we
-  // re-verify here, our rebuilt urlParams MUST include the same empty
-  // keys, otherwise our canonical sign string drops a field that Growatt
-  // signed → invalid_signature on submit even though the original URL
-  // validated fine on /page.tsx. (Fix confirmed root cause of /api/submit
-  // token_invalid_signature post the 2026-05-26 hmac.ts change.)
-  if (body.token.name !== undefined) urlParams.set("name", body.token.name);
-  if (body.token.email !== undefined) urlParams.set("email", body.token.email);
-  if (body.token.address !== undefined) urlParams.set("address", body.token.address);
-  if (body.token.inverterModel !== undefined) urlParams.set("inverterModel", body.token.inverterModel);
-  if (body.token.language !== undefined) urlParams.set("language", body.token.language);
+  for (const [key, value] of Object.entries(body.token)) {
+    if (value !== undefined) urlParams.set(key, value);
+  }
 
   // Forward request IP / User-Agent into verifyToken so its failure log
   // can tell us whether the call is coming from a real Growatt WebView

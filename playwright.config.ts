@@ -6,6 +6,7 @@ const NON_WEBVIEW_TESTS = [
   "**/interaction.spec.ts",
 ];
 const WEBVIEW_TESTS = ["**/webview.spec.ts"];
+const UNIT_TESTS = ["**/hmac.spec.ts"];
 
 const SHINEPHONE_UA =
   "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/87.0.4280.141 Mobile Safari/537.36 ShinePhone/Android/5.1.0";
@@ -27,16 +28,24 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    stdout: "ignore",
-    stderr: "pipe",
-  },
+  // Pure unit tests (e.g. hmac.spec.ts) need no dev server. Skip it with
+  // PW_SKIP_WEBSERVER=1 npx playwright test --project=unit
+  webServer: process.env.PW_SKIP_WEBSERVER
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: "http://localhost:3000",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+        stdout: "ignore",
+        stderr: "pipe",
+      },
 
   projects: [
+    {
+      name: "unit",
+      testMatch: UNIT_TESTS,
+    },
     {
       name: "mobile-iphone-14-pro",
       use: { ...devices["iPhone 14 Pro"] },
