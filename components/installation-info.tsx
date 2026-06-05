@@ -4,6 +4,12 @@ import { useState, useRef, useEffect } from "react";
 import { Pencil, Check } from "lucide-react";
 import type { InstallationData } from "@/types/installation";
 
+const FIELD_MAX_LENGTH = {
+  name: 50,
+  email: 50,
+  address: 50,
+} as const;
+
 interface InstallationInfoProps {
   data: InstallationData;
   /** Called when user finishes editing a field (onBlur) */
@@ -38,6 +44,7 @@ export default function InstallationInfo({
           label="Name"
           value={data.name}
           placeholder="Add your name"
+          maxLength={FIELD_MAX_LENGTH.name}
           onSave={(v) => onChange?.({ ...data, name: v })}
         />
         <EditableRow
@@ -45,6 +52,7 @@ export default function InstallationInfo({
           value={data.email}
           placeholder="Add your email"
           type="email"
+          maxLength={FIELD_MAX_LENGTH.email}
           onSave={(v) => onChange?.({ ...data, email: v })}
         />
         <EditableRow
@@ -52,6 +60,7 @@ export default function InstallationInfo({
           value={data.address}
           placeholder="Add your address"
           multiline
+          maxLength={FIELD_MAX_LENGTH.address}
           onSave={(v) => onChange?.({ ...data, address: v })}
         />
 
@@ -116,6 +125,7 @@ interface EditableRowProps {
   value: string | undefined;
   placeholder: string;
   type?: "text" | "email";
+  maxLength?: number;
   multiline?: boolean;
   onSave: (value: string) => void;
 }
@@ -125,6 +135,7 @@ function EditableRow({
   value,
   placeholder,
   type = "text",
+  maxLength,
   multiline = false,
   onSave,
 }: EditableRowProps) {
@@ -191,8 +202,9 @@ function EditableRow({
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
+                maxLength={maxLength}
                 rows={2}
-                className="flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none"
+                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 resize-none break-words [overflow-wrap:anywhere]"
               />
             ) : (
               <input
@@ -202,7 +214,8 @@ function EditableRow({
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
-                className="flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 text-right"
+                maxLength={maxLength}
+                className="min-w-0 flex-1 text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40 text-right"
               />
             )
           ) : (
@@ -213,7 +226,7 @@ function EditableRow({
               aria-label={`Edit ${label}`}
             >
               <span
-                className={`text-sm break-words ${
+                className={`min-w-0 max-w-full text-sm break-words [overflow-wrap:anywhere] ${
                   hasValue
                     ? "text-sunterra-dark"
                     : "text-sunterra-dark/40 italic"
