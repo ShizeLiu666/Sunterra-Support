@@ -81,9 +81,9 @@ const PROBLEM_TYPES: readonly ProblemType[] = [
   },
 ];
 
-const MAX_DESCRIPTION_LENGTH = 500;
-const DESCRIPTION_WARN_AT = 450;
-const DESCRIPTION_DANGER_AT = 490;
+const MAX_DESCRIPTION_LENGTH = 1000;
+const DESCRIPTION_WARN_AT = 900;
+const DESCRIPTION_DANGER_AT = 980;
 
 const MAX_PHOTOS = 5;
 const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024; // selection-time limit;
