@@ -4,10 +4,13 @@
 A ticket submission web app. Users come from Growatt ShinePhone App via deep link, submit support tickets that create Cases in Salesforce.
 
 ## Tech Stack
-- Next.js 14+ (App Router)
+- Next.js 16.2.6 (App Router)
 - TypeScript (strict mode)
 - Tailwind CSS
 - Deployment: Vercel
+- This project uses webpack for dev/build, not Turbopack. Local dev should use
+  `POSTCSS_SKIP_FALLBACKS=1 npx next dev --webpack`; production build uses
+  `next build --webpack`.
 
 ## Brand Colors (Sunterra)
 - Primary (teal green): #1D9E75

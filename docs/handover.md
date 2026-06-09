@@ -1,838 +1,335 @@
 # Sunterra Support — Project Handover
 
-> Last updated: 2026-05-24 (Production live on `sunterra-support.vercel.app`; DNS cutover to `support.sunterra.com.au` pending Lily/Cloudflare)
+> Last updated: 2026-06-09
 >
-> This file is the single source of truth for project state.
-> Read this first when joining the project or starting a new chat session.
-> It is intentionally self-contained — you should be able to understand the
-> project without opening any other file.
-
-> ⚠️ **PRODUCTION LIVE — DNS CUTOVER PENDING**
+> Current active work branch: `milestone-2`
 >
-> Production URL (active):   `https://sunterra-support.vercel.app/`
-> Target URL (DNS-pending):  `https://support.sunterra.com.au/`
->
-> Status as of 2026-05-24:
->   ✅ Vercel project deployed; production Salesforce wired up
->   ✅ End-to-end verified on production (Case-14083/14084/14085, all deleted)
->   ⏳ DNS cutover: Lily to add CNAME on Cloudflare (sunterra.com.au zone)
->   ⏳ Growatt HMAC integration: contract not yet aligned — Growatt's
->      current proposal sends only `{ name, timestamp }` and is missing
->      `sn`, which the web app requires for SN → Job__c lookup
->
-> When DNS cutover happens, the following must update together:
->   1. Vercel: add `support.sunterra.com.au` as custom domain
->   2. Growatt: switch HMAC signing host from
->      `sunterra-support.vercel.app` → `support.sunterra.com.au`
->   3. `docs/integration-spec.md` — flip the URL example back to
->      `support.sunterra.com.au`
->   4. `docs/handover.md` Production Configuration section —
->      flip the Production URL value
->   5. Remove this NOTE block
+> This file is the first document a new agent should read before touching this
+> repository. It records current branch state, production risk, strict v1.1 URL
+> rules, local dev commands, and remaining work.
 
-## What this project is
+## AGENT MUST-READ 速览
 
-Sunterra is an Australian rooftop-solar installer with ~3,000 systems deployed,
-all using Growatt inverters monitored by the Growatt **ShinePhone App**. When a
-customer hits a problem, ShinePhone offers a "Support" entry that deep-links to
-this web app with the user's installation pre-filled.
+- 🔴 `main` = production. It deploys to `https://support.sunterra.com.au/` and
+  is in gray rollout with real users. Do not directly edit, merge, or push
+  `main` unless the user explicitly asks for a production hotfix/deploy.
+- 🔴 Local dev must use Node 20.19.5 first in `PATH`, skip PostCSS fallbacks in
+  dev, and force webpack:
 
-This web app is a single-purpose mobile-first ticket-submission form: the user
-picks a problem type, types a description, optionally adds up to 5 photos
-(compressed client-side before upload), and submits.
-The server creates a `Customer_Care__c` record in Salesforce; downstream
-automation in Salesforce (Jack-owned, see "Salesforce admin" role below)
-routes the case to a support engineer. The web app's responsibilities end at
-"case created in SF".
+  ```bash
+  export PATH="$HOME/.nvm/versions/node/v20.19.5/bin:$PATH"
+  POSTCSS_SKIP_FALLBACKS=1 npx next dev --webpack
+  ```
 
-## Architecture
+  Do not rely on plain `npm run dev` for local diagnosis; it can hit
+  `ERR_REQUIRE_ESM` in the dev PostCSS path.
+- 🔴 Current branch is `milestone-2`. It is the strict spec v1.1 terminal
+  version. Before changing signing/verification, read
+  `docs/integration-spec.md` and `tests/hmac.spec.ts`.
+- 🔴 Work in small steps. Before code changes, inspect the existing code and
+  explain the plan. After changes, show `git diff`. Do not commit or push
+  unless the user explicitly asks.
+- 🔴 Never expose Salesforce credentials or HMAC secrets. `.env.local` is local
+  only and must not be committed.
 
+## Current Branch / Deployment State
+
+### `main` — Production
+
+- Production URL: `https://support.sunterra.com.au/`.
+- DNS cutover is complete. Old notes saying DNS is pending are historical.
+- Real users may be using production during gray rollout.
+- `main` includes two recent production hotfixes:
+  - Field length / overflow fix for `Name`, `Email`, `Address` display and
+    input limits.
+  - Description limit increased from 500 to 1000 chars.
+- Production deploy status after the Description hotfix was successful.
+
+### `milestone-2` — Preview / Strict v1.1
+
+- `milestone-2` is synced to `origin/milestone-2` at the strict v1.1 signature
+  implementation.
+- Preview branch alias:
+
+  ```text
+  https://sunterra-support-git-mil-b4373a-liushize0408-gmailcoms-projects.vercel.app/
+  ```
+
+- `milestone-2` is not yet production. It contains strict v1.1 behavior and
+  extra form/confirmation UX not present on `main`.
+
+## What This Project Is
+
+Sunterra is an Australian solar installer. Customers enter this support form
+from Growatt ShinePhone App via a signed deep link. The app lets the customer
+confirm contact/installation details, choose a problem type, describe the issue,
+optionally upload photos, and submit a support ticket.
+
+The server creates a Salesforce `Customer_Care__c` record. Salesforce object
+labels can be misleading:
+
+- Support ticket object: `Customer_Care__c`.
+- Installation object: `Job__c` (label: Installation).
+- `Customer_Care__c.Job_Number__c` is a lookup to `Job__c`.
+
+## Tech Stack / Build Rules
+
+- Next.js `16.2.6` App Router.
+- React `19.2.4`.
+- TypeScript strict.
+- Tailwind CSS v4.
+- Salesforce REST API via OAuth Client Credentials.
+- HMAC-SHA256 using Node `crypto`.
+- Vercel deployment.
+
+Important build/runtime decision:
+
+- Use webpack, not default Turbopack, for production build and reliable old
+  WebView compatibility.
+- `package.json` has:
+
+  ```json
+  "build": "next build --webpack"
+  ```
+
+- Local dev should use:
+
+  ```bash
+  export PATH="$HOME/.nvm/versions/node/v20.19.5/bin:$PATH"
+  POSTCSS_SKIP_FALLBACKS=1 npx next dev --webpack
+  ```
+
+Why:
+
+- Node 24 + Next 16/React 19 caused local build/dev instability.
+- Dev with the full PostCSS fallback chain can hit ESM/CJS issues; use
+  `POSTCSS_SKIP_FALLBACKS=1` locally.
+- Webpack is required because Turbopack did not reliably honor the browser
+  targets needed for older Android/ShinePhone WebViews.
+
+## Environment State
+
+Local `.env.local` currently points to the test sandbox:
+
+```text
+SALESFORCE_INSTANCE_URL=https://sunterra--test.sandbox.my.salesforce.com
+SALESFORCE_LOGIN_URL=https://test.salesforce.com
+SALESFORCE_API_VERSION=v62.0
+NODE_ENV=development
 ```
-   ┌──────────────────────┐
-   │ Growatt ShinePhone   │  user taps "Support"
-   └─────────┬────────────┘
-             │  signed deep-link (flat camelCase query params,
-             │  HMAC-SHA256, 24h TTL)
-             ▼
-   ┌──────────────────────┐
-   │ Next.js  app/page.tsx│  server: verifyToken()
-   │                      │  ✗ invalid → /expired?reason=…
-   └─────────┬────────────┘
-             │ ✓ valid
-             ▼
-   ┌──────────────────────┐
-   │ <SupportApp />       │  client wrapper, edits to name/email/address
-   │  └─ <TicketForm />   │  problem type + description + photos
-   └─────────┬────────────┘
-             │  POST /api/submit  ({ token, form })
-             ▼
-   ┌──────────────────────┐
-   │ /api/submit          │  POST handler: re-verifies token, builds
-   │   lib/salesforce.ts  │  SF payload, creates Customer_Care__c,
-   │                      │  then uploads any attached photos
-   │                      │  serially (1-by-1) as ContentVersion
-   └─────────┬────────────┘
-             │  POST /sobjects/Customer_Care__c
-             │  POST /sobjects/ContentVersion (per photo,
-             │     with FirstPublishLocationId = case Id)
-             ▼
-   ┌──────────────────────┐
-   │ Salesforce           │  Customer_Care__c row created
-   │ (sandbox + prod)     │  (SN → Job__c lookup is now inline in
-   │                      │   createCustomerCare, see SOSL design below)
-   └──────────────────────┘
+
+Production Vercel environment points to Salesforce production:
+
+```text
+SALESFORCE_INSTANCE_URL=https://sunterra.my.salesforce.com
 ```
 
-## Tech stack
+Never paste real secrets into docs or chat. Only variable names and environment
+purposes belong in documentation.
 
-- **Next.js 16** (App Router, Turbopack)
-- **TypeScript** (strict)
-- **Tailwind CSS v4**
-- **browser-image-compression v2.x** — client-side photo
-  compression (Phase 2G)
-- **Salesforce REST API** via OAuth 2.0 **Client Credentials Flow**
-  (External Client App, no username/password)
-- **Node `crypto`** for HMAC-SHA256
-- **Vercel** for deployment (production live since 2026-05-24)
+## Strict v1.1 URL / Signature State
 
-No client-side data libraries (no SWR / React Query), no form library, no UI
-kit. Everything is hand-rolled — keep it that way unless you have a strong
-reason.
+`milestone-2` implements strict v1.1. See `docs/integration-spec.md` for the
+full contract. Summary:
 
-## Salesforce data model (CRITICAL — read carefully)
+- Required URL keys:
+  `email`, `name`, `address`, `sn`, `deviceType`, `deviceModel`, `timestamp`,
+  `sign`.
+- Final URL display order:
+  `email -> name -> address -> sn -> deviceType -> deviceModel -> timestamp -> sign`.
+- HMAC input order is different: all fields except `sign`, sorted by field
+  name ascending.
+- HMAC input uses raw values, not URL-encoded values.
+- Empty `email=`, `name=`, `address=` are kept and signed as `key=`.
+- `sn`, `deviceType`, `deviceModel`, `timestamp`, and `sign` must be non-empty.
+- `deviceType` must be `inverter` or `battery`.
+- `sn` is exactly one selected problem-device SN. `milestone-2` does not keep
+  legacy multi-SN compatibility.
 
-### Object naming
+Implementation notes:
 
-| Label (UI)     | API name           | Purpose                              |
-|----------------|--------------------|--------------------------------------|
-| "Case"         | `Customer_Care__c` | Support tickets (51 fields)          |
-| "Installation" | `Job__c`           | Customer installations (190 fields)  |
+- `lib/hmac.ts` signing algorithm was not changed during v1.1 work; it was
+  already dynamic and correct.
+- `tests/hmac.spec.ts` locks the spec worked example and empty-value example.
+- `lib/token.ts` enforces strict v1.1 required key/value rules.
+- `/api/submit` re-verifies by forwarding all received signed params
+  generically instead of rebuilding a hard-coded whitelist.
+- `components/support-app.tsx::readTokenFromUrl()` also forwards all URL params
+  generically so submit-time re-verification receives the exact signed set.
 
-**Warning**: Sunterra's internal language calls the object "Installation" but
-its API name is `Job__c`. All code MUST use `Job__c`. The previous handover
-incorrectly referred to it as `Installation__c` — **there is no such object**.
+## Completed on `milestone-2`
 
-### Relationship
+User-facing form/UX:
 
-`Customer_Care__c.Job_Number__c` → Lookup → `Job__c`
+- Confirmation/review view before final submit.
+- Mobile number field.
+- Client validation for Name, Email, Mobile, Address, Problem type,
+  Description.
+- Server-side required enforcement for Email and Mobile.
+- Required-field asterisks dynamically show green when valid and red when
+  invalid/empty.
+- Review button reveals errors and scrolls/focuses the first invalid field.
+- Description limit increased to 1000 chars.
+- Long Name/Email/Mobile/Address values are length-capped and protected from
+  horizontal overflow.
+- Confirm view shows full Description text.
+- Confirm view shows real signed `deviceType` / `deviceModel` values from the
+  URL. These are display-only.
 
-### SN matching (CRITICAL design decision)
+Strict v1.1/signature:
 
-ShinePhone passes the inverter SN in the URL. To match it to an Installation:
+- 8-key strict URL verification.
+- `deviceType` enum validation.
+- `deviceType` / `deviceModel` parsed into `InstallationData` / `UrlParams`.
+- `/api/submit` generic signed-param forwarding to avoid future
+  `invalid_signature` bugs from dropped fields.
+- `tests/hmac.spec.ts` added as a Playwright unit project for HMAC canonical
+  string regression coverage.
 
-- `Job__c.Inverter_Battery_Serials__c` is a Long Text Area (32k chars), storing
-  multiple SNs concatenated (avg 5.6 SNs per Job).
-- **Salesforce forbids Long Text Area fields in SOQL `WHERE` clauses.**
-- **SOSL treats `-` as a reserved operator** (Lucene `NOT` syntax),
-  which would cause raw SOSL queries with `-`-containing SNs to fail.
-  Phase 2F-2's `escapeSosl()` helper handles this by escaping `-`
-  along with 16 other reserved characters before sending to SOSL.
+Salesforce/device caveat:
 
-Therefore the design decision (finalised 2026-05-20):
+- Salesforce `Customer_Care__c` currently has no device fields.
+- Do not write `Device_Type__c` or `Device_Model__c` unless Salesforce fields
+  are created first; posting unknown fields will 400.
 
-> **Phase 2F-2 update (2026-05-21):** The web layer now resolves
-> SN → `Job__c` synchronously at Customer_Care__c creation time
-> using Salesforce's **SOSL Search API** (not SOQL):
->
->     FIND {<SN>} IN ALL FIELDS RETURNING Job__c(Id, Name) LIMIT 5
->
-> Why SOSL (not SOQL):
-> - `Job__c.Inverter_Battery_Serials__c` is a Long Text Area (32k);
->   SF does not allow Long Text Area fields in SOQL `WHERE` clauses.
-> - SOSL Search API is platform-native for full-text search and
->   handles whitespace/comma/semicolon-delimited SN lists in
->   `Inverter_Battery_Serials__c` as separate index tokens.
->
-> Flow (per submission):
-> 1. Web receives SN from ShinePhone URL token
-> 2. `findJobBySN()` in `lib/salesforce.ts` issues SOSL with 4s
->    AbortController timeout
-> 3. Matched: payload includes `Job_Number__c = <Job__c.Id>`,
->    response field `matched: true`
-> 4. Unmatched (0 results / network failure / timeout / any error):
->    `Job_Number__c` omitted from payload (lookup unset),
->    response field `matched: false`, Case still created
->    successfully, support staff reconciles manually
->
-> Key properties:
-> - Single SOSL call per submission, ~200-800ms in normal sandbox
-> - Failures are **silent to the customer**: no warning shown, no
->   blocking of Case creation — this is a deliberate UX choice
->   (customers from ShinePhone can't fix SN issues; surfacing it
->   would confuse them and risk lost tickets)
-> - `escapeSosl()` (internal helper) escapes 17 SOSL reserved
->   characters to prevent syntax errors / injection from
->   user-controlled SN strings
+## Production Hotfixes Already on `main`
 
-## Salesforce environment
+`main` is production and already includes:
 
-### Sandbox (development + pre-prod testing)
+- `fix: cap Name/Email/Address length and prevent overflow`
+  - Caps Name/Email/Address lengths.
+  - Prevents long unbroken text from overflowing the info card.
+- `feat: increase description limit to 1000 chars`
+  - Changes Description max length from 500 to 1000.
+  - Updates warning/danger thresholds to 900/980.
 
-- URL: `https://sunterra--dev.sandbox.my.salesforce.com`
-- Type: Developer Sandbox (200 MB, free)
-- Region: Hyperforce AUS4S
-- Created: 2026-05-19
+Do not assume `main` has milestone-2 features. It does not have strict v1.1
+confirmation-flow work unless explicitly merged later.
 
-### Production
+## Salesforce Notes
 
-- URL: `https://sunterra.my.salesforce.com`
-- **Live as of 2026-05-24.** Org ID `00D28000000s1H5`. The Vercel
-  production deployment points at this org. Full configuration
-  (External Client App, Permission Set, Run-As User, page layout)
-  is documented in the **Production Configuration** section below.
-- **Do not run write tests against production unless they're
-  cleanup-tracked** — the integration user lacks Delete on
-  `Customer_Care__c`, so test cases require an admin to remove.
+Key object/field facts:
 
-### External Client App (sandbox)
+- `Customer_Care__c` is the support ticket object.
+- `Job__c` is the installation object.
+- `Customer_Care__c.Job_Number__c` is a lookup to `Job__c`.
+- `Job__c.Inverter_Battery_Serials__c` is Long Text Area, so it cannot be used
+  in SOQL `WHERE`.
+- SOSL is required for SN search:
 
-> Production has a separate External Client App with the same name
-> but a different consumer key/secret pair. Production values are
-> documented in the **Production Configuration** section below.
+  ```text
+  FIND {<SN>} IN ALL FIELDS RETURNING Job__c(Id, Name) LIMIT 5
+  ```
 
-- Name: `Sunterra Support Web App`
-- API name: `Sunterra_Support_Web_App`
-- OAuth flow: **Client Credentials**
-- Run As: `jack.liu@sunterra.com.au.dev` (User ID `0058s00000JNvFZAA1`)
-- Profile: `Salesforce API Only System Integrations`
-- License: `Salesforce Integration` (free)
-- Note: the Integration User cannot log in via the SF UI (API-only restriction)
-  — this is expected.
+- Known test sandbox match:
+  - `NTCIA01092` -> `Job__c` `JOB-08973` (`a000I000025xiMxQAI`).
 
-### Permission Set (sandbox)
+Production layout/status:
 
-> Production has an equivalent Permission Set with the same name and
-> shape; see **Production Configuration** for the production
-> assignment + Delete-permission note.
+- `Customer_Name__c` has been added to the production layout.
+- Keep `Case_Origin__c = Web` unless the user explicitly asks to change origin
+  behavior and Salesforce picklist values are verified.
 
-- Name: `Sunterra Support API Access`
-- Assigned to the Integration User above
-- Object permissions:
-  - `Customer_Care__c` — Read / Create / Edit
-  - `Job__c` — Read (kept for future Flow / read-only diagnostics)
-- Field-level security: full read/edit on all fields the web layer touches
+## Outstanding Work / TODO
 
-### API version
+High priority:
 
-- `v62.0` — set via `SALESFORCE_API_VERSION` in `.env.local` (same
-  version configured in Vercel Production env).
+- Enable `ENABLE_SOSL_JOB_LOOKUP=true` in the relevant environment when ready.
+- Improve matching logic for v1.1 selected-device SN:
+  - For strict v1.1, use the single selected `sn`.
+  - If any legacy/multi-SN path is reintroduced later, search individual SNs
+    and only populate `Job_Number__c` when the result is unambiguous.
+- Run real ShinePhone WebView validation with Growatt's v1.1 link.
+- Verify Preview behavior with production-like v1.1 signed URLs before merging
+  milestone-2 to production.
 
-### Picklist values verified on 2026-05-21
+Salesforce/admin:
 
-- `Customer_Care__c.Status__c` accepts these active values:
-  `Open` (default), `In Progress`, `Escalated`,
-  `Customer Care Done, Waiting Payment From Liable`, `Closed`, `On Hold`.
-  The web app sends `'Open'` (the default), which is valid. Earlier
-  handover notes claiming `'New'` was the correct initial value were
-  incorrect — there is no `'New'` value in this picklist.
+- Add device fields to `Customer_Care__c` if Sunterra wants to store
+  `deviceType` / `deviceModel` in Salesforce. Until then, they are display-only.
+- Keep monitoring whether production layout fields are visible to support staff.
 
-## Production Configuration
+Security/ops:
 
-Production deployment completed 2026-05-24. All facts below are the
-current state of production; sandbox equivalents are in the
-**Salesforce environment** section above.
+- Plan HMAC secret rotation with Growatt. Current implementation assumes a
+  single shared secret.
+- Keep secrets out of docs, chat, client code, and git history.
 
-### Salesforce production org
+Local dev/build:
 
-- URL: `https://sunterra.my.salesforce.com`
-- Org ID: `00D28000000s1H5`
-- API version: `v62.0` (same as sandbox)
+- Standardize local Node on `v20.19.5`.
+- Avoid Node 24 for this project until Next/React local build issues are
+  resolved.
+- Consider updating `package.json` dev script later to encode the safe dev
+  command, but do not change it without user approval.
 
-### Production External Client App
+Testing/docs:
 
-- Name: `Sunterra Support Web App`
-- API name: `Sunterra_Support_Web_App`
-- OAuth flow: **Client Credentials** (same as sandbox)
-- Run As: `jack.liu@sunterra.com.au.prod`
-- Profile: `Salesforce API Only System Integrations`
-- License: `Salesforce Integration`
+- Keep `tests/hmac.spec.ts` green after any signature change:
 
-### Production Permission Set
+  ```bash
+  PW_SKIP_WEBSERVER=1 npx playwright test --project=unit
+  ```
 
-- Name: `Sunterra Support API Access` (same name as sandbox; different org)
-- Object permissions:
-  - `Customer_Care__c` — Read / Create / Edit (no Delete — intentional
-    security posture; integration user cannot delete cases. Confirmed
-    by curl test on 2026-05-24: DELETE returned
-    `INSUFFICIENT_ACCESS_OR_READONLY` as expected.)
-  - `Job__c` (label "Installation") — Read on all fields
-- Field-level security: full read/edit on all `Customer_Care__c` fields
-  the web layer touches.
+- Update this handover and `docs/integration-spec.md` before declaring future
+  signing or deployment changes complete.
 
-### Production page layout
+## Key File Map
 
-- `Customer_Care__c` page layout has the **Files related list** added
-  (2026-05-24). Photo attachments uploaded via ContentVersion will
-  surface there.
-
-### Production deployment (Vercel)
-
-- Project: Vercel (free tier currently)
-- URL: `https://sunterra-support.vercel.app` (Vercel-issued; temporary
-  until Lily configures Cloudflare CNAME for
-  `support.sunterra.com.au`)
-- Environment variables set in **Vercel → Settings → Environment
-  Variables → Production scope**:
-  - `HMAC_SECRET`
-  - `TOKEN_TTL_SECONDS`
-  - `SALESFORCE_CLIENT_ID`
-  - `SALESFORCE_CLIENT_SECRET`
-  - `SALESFORCE_INSTANCE_URL` = `https://sunterra.my.salesforce.com`
-  - `SALESFORCE_API_VERSION` = `v62.0`
-- Vercel-managed vars NOT set manually: `NODE_ENV`, `VERCEL_ENV`,
-  `PORT`, `CI`.
-
-### Production end-to-end verification (2026-05-24)
-
-- Three test cases created and deleted on 2026-05-24:
-  - `Case-14083` — curl POST to
-    `/services/data/v62.0/sobjects/Customer_Care__c`
-    ("Production OAuth test")
-  - `Case-14084` — web form submission via
-    `https://sunterra-support.vercel.app/` ("Support: Battery issue")
-  - `Case-14085` — web form submission, second pass
-    ("Support: Inverter Issue")
-- All three deleted via SF UI by admin user (integration user lacks
-  Delete on `Customer_Care__c` by design).
-- `Type__c` picklist values verified across these cases: both
-  "Battery issue" and "General Inquiries" wrote successfully — no
-  production picklist mismatch.
-- SOSL `findJobBySN()` validation against real production data:
-  **not yet performed** — only confirmed with sandbox fixtures. Will
-  be observed when real Growatt traffic begins (tracked as P1 in
-  Outstanding items).
-
-## Completed phases
-
-- ✅ **Phase 1** — UI shell (mobile-first, Tailwind v4, brand colours)
-- ✅ **Phase 2A** — Canonical schema (`types/installation.ts`), unified across
-  URL parsing / token / UI / Salesforce
-- ✅ **Phase 2B** — Per-field lazy env validation (`lib/env.ts`)
-- ✅ **Phase 2C** — HMAC core (`lib/hmac.ts`), URL builder (`lib/sign-url.ts`),
-  dev test-link generator (`/dev/test-link` + `/api/dev/build-link`)
-- ✅ **Phase 2D-1/2** — `verifyToken()` (`lib/token.ts`), `/expired` page,
-  homepage URL parsing + redirect on failure
-- ✅ **Phase 2E-1/2** — `<SupportApp />` client wrapper + editable installation
-  fields wired through to `TicketForm`
-- ✅ **Phase 2F-1** — `lib/salesforce.ts`: OAuth Client Credentials Flow,
-  in-memory token cache (2h), `createCustomerCare()` with structured errors
-- ✅ **Phase 2F-2** — `app/api/submit/route.ts`: body validation, server-side
-  token re-verification (defence in depth), TYPE_MAP, address-merge logic
-- ✅ **Phase 2F-3** — `components/ticket-form.tsx`: `handleSubmit` does real
-  fetch, `isSubmitting`/`submitError` state, redirects to `/success?caseId=…`
-- ✅ **Phase 2F-4** — `app/success/page.tsx`: English copy, displays caseId from
-  search params, matches `/expired` styling
-- ✅ **End-to-end verified** in sandbox: caseId `a1y8s00000EcUhlAAF`
-- ✅ **Phase 2G-1** — `lib/salesforce.ts`: `uploadPhotoToCase()`
-  helper using ContentVersion + FirstPublishLocationId for one-shot
-  file + link creation. Verified end-to-end via
-  `scripts/test-photo-upload.ts`.
-- ✅ **Phase 2G-2** — `components/ticket-form.tsx`: client-side
-  image compression via `browser-image-compression` (~26KB gzip),
-  maxSizeMB: 0.8, maxWidthOrHeight: 1600. Submit button shows
-  "Preparing photos..." → "Submitting..." → "Attaching photos..."
-  stages. MAX_PHOTO_SIZE_BYTES raised to 15MB (selection-time
-  only; compression handles the heavy lifting).
-- ✅ **Phase 2G-3** — `/api/submit` + `/success` integration:
-  photos transported as JSON+base64 in request body, server-side
-  uploaded serially to Salesforce, partial failures surfaced via
-  `?photoWarning=N` to `/success` (orange warning banner with
-  singular/plural copy).
-- ✅ **End-to-end verified** in sandbox: Case-14068 with 1 photo
-  attached + 1 deliberately oversized payload rejected, photoWarning
-  correctly displayed.
-- ✅ **Phase 2F-2** — `lib/salesforce.ts`: `findJobBySN()` SOSL
-  lookup helper with 4s AbortController timeout. `createCustomerCare()`
-  invokes it on every submission; when matched, payload includes
-  `Job_Number__c = <Job__c.Id>`. Response `matched` field reflects
-  the lookup outcome (replacing the Phase 2F-1 placeholder semantics).
-  Independent test harness at `scripts/test-sosl-lookup.ts`
-  (4/4 PASS: happy path TESTINV0010 → JOB-27763, unmatched → null,
-  SOSL special chars → null without throw, whitespace short-circuit).
-- ✅ **Lily's problem categories** — `components/ticket-form.tsx`
-  PROBLEM_TYPES + `app/api/submit/route.ts` TYPE_MAP replaced with
-  Lily's 6 top-case categories: Battery Issue, Inverter Issue,
-  App Monitoring, System Performance, Installation Quality, Other
-  Issue. Each maps to an existing SF `Type__c` picklist value
-  (no SF metadata change required).
-- ✅ **End-to-end verified** (Phase 2F-2): Case-14070 created with
-  `Job_Number__c = JOB-27763` blue link; unmatched SN (GW2024XK8B72)
-  correctly produced empty `Job_Number__c` without blocking case.
-- ✅ **Phase 2H** — Production deployment (2026-05-24): Vercel project
-  provisioned, 6 production env vars configured, production SF External
-  Client App + Permission Set + Files related list configured by Jack.
-  End-to-end verified via Case-14083/14084/14085 (curl + web form,
-  both paths succeeded; all three cases deleted post-verification).
-  Production `Type__c` picklist verified via Case-14084 ("Battery issue")
-  and Case-14083 ("General Inquiries") — both wrote successfully.
-
-## Outstanding items (blocking or near-blocking)
-
-| Priority | Item                                                                       | Owner                       | Notes                                                                                                                                                                                                                                                                                                                                |
-|----------|----------------------------------------------------------------------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **P0**   | DNS cutover: `support.sunterra.com.au` CNAME to Vercel                     | Lily                        | Cloudflare zone (`sunterra.com.au`) managed by Lily. Pending until Monday (post-weekend office network change). Cutover steps in the top NOTE block.                                                                                                                                                                                  |
-| **P0**   | Growatt HMAC integration contract alignment                                | Growatt + tech coordinator  | Growatt's current proposal sends only `{ name, timestamp }`. **The web app requires `sn`** for SN → Job__c lookup (Phase 2F-2); without it the matched-Job feature becomes dead code. Other open items: timestamp unit (must be seconds, not ms), exact signing canonicalisation, HMAC secret handover mechanism.                     |
-| **P1**   | SOSL Job lookup validation on real production traffic                      | tech coordinator            | Sandbox passed (4/4 in `scripts/test-sosl-lookup.ts`); production has not yet been hit by real Growatt SNs. Observe `Job_Number__c` fill rate once Growatt traffic begins.                                                                                                                                                            |
-| **P1**   | Replace `XXX` placeholder in `/success` warning with real support email    | Jack                        | Affects real user-facing copy when photo upload partially fails. Must be replaced before Growatt cut-over.                                                                                                                                                                                                                            |
-| **P2**   | Add `'ShinePhone'` to `Case_Origin__c` picklist (sandbox + production both)| Jack                        | Currently the code hardcodes `Case_Origin__c = 'Web'`. Adding `'ShinePhone'` is only needed when we actually start writing that value — future feature, not a launch blocker.                                                                                                                                                          |
-| **P2**   | Move local repo from `~/Desktop/Sunterra-Support` to `~/code/Sunterra-Support` | Jack                    | iCloud Desktop Sync causes `readFileSync ETIMEDOUT` on `globals.css` during `npm run build` / `npm run dev`. Planned for Monday on office network.                                                                                                                                                                                    |
-| **P2**   | Restore `.env.local` from `.env.local.sandbox-backup`                      | Jack                        | `.env.local` is currently pointed at production (for curl smoke tests during the 2026-05-24 deploy). Restore sandbox values after the iCloud-sync repo move on Monday.                                                                                                                                                                |
-
-#### Field verification detail (`a1y8s00000EcUhlAAF` / Case-14060)
-
-Verified via SOQL on 2026-05-21 morning:
-
-| Field                            | Expected             | Actual               | Result |
-|----------------------------------|----------------------|----------------------|--------|
-| `Name` (Auto Number)             | Case-XXXXX           | Case-14060           | ✅     |
-| `Type__c`                        | General Inquiries    | General Inquiries    | ✅     |
-| `Subject__c`                     | (any)                | Support request      | ✅     |
-| `Description__c`                 | (non-empty)          | (non-empty)          | ✅     |
-| `Inverter_Battery_Serials__c`    | GW2024XK8B72         | GW2024XK8B72         | ✅     |
-| `Customer_Name__c`               | (non-empty)          | Jack Test            | ✅     |
-| `Email__c`                       | (non-empty)          | jack-test@example... | ✅     |
-| `Installation_Street__c`         | (non-empty)          | 123 Test Street, ... | ✅     |
-| `Job_Number__c`                  | blank (unmatched)    | blank                | ✅⭐   |
-| `Case_Origin__c`                 | Web                  | Web                  | ✅     |
-| `Status__c`                      | Open (default)       | Open                 | ✅     |
-| `CreatedBy.Username`             | jack.liu@sunterra... | jack.liu@sunterra... | ✅     |
-
-The starred row (`Job_Number__c` blank) is the key design validation:
-unmatched SN correctly results in a null lookup, not an error, not a
-guess. Note: Case-14060 was created **before Phase 2F-2** — at the
-time, SN → `Job__c` reconciliation was planned as a downstream Flow.
-As of Phase 2F-2 (2026-05-21), reconciliation happens inline in
-`createCustomerCare()` via SOSL.
-
-## Key environment variables
-
-Listed in `.env.example`. Names + purposes only — never paste real values into
-docs.
-
-| Variable                   | Purpose                                                                |
-|----------------------------|------------------------------------------------------------------------|
-| `HMAC_SECRET`              | Shared secret with Growatt for signing/verifying deep-link URLs.        |
-| `TOKEN_TTL_SECONDS`        | Deep-link validity window (default 86400 = 24h).                       |
-| `SALESFORCE_CLIENT_ID`     | Consumer Key of the External Client App.                               |
-| `SALESFORCE_CLIENT_SECRET` | Consumer Secret of the External Client App.                            |
-| `SALESFORCE_INSTANCE_URL`  | SF org base URL. Sandbox in `.env.local` for local dev; production URL configured in Vercel Production env. |
-| `SALESFORCE_API_VERSION`   | REST API version path segment (`v62.0`).                               |
-| `NODE_ENV`                 | `development` enables `/dev/*` tools; `production` 404s them.          |
-
-All Salesforce variables are server-side only and must never reach the client.
-
-## Key file map
-
-```
+```text
 app/
-  page.tsx                       Server entry: verifyToken() + redirect, renders <SupportApp />
-  layout.tsx                     Root layout + fonts
-  expired/page.tsx               Token-failure page (reason-specific copy)
-  success/page.tsx               Post-submit page; shows caseId from ?caseId=
-  api/submit/route.ts            POST handler: re-verifies token, builds SF payload, creates Customer_Care__c
-  api/dev/build-link/route.ts    Dev-only URL signer (404 in production)
-  dev/test-link/                 Dev-only test-URL generator UI
+  page.tsx                    Server entry; verifies URL token and renders SupportApp.
+  expired/page.tsx            Token failure page.
+  success/page.tsx            Post-submit page.
+  api/submit/route.ts         Re-verifies token and creates Customer_Care__c.
 
 components/
-  support-app.tsx                Client wrapper, holds installationData + token state
-  installation-info.tsx          Editable installation card (sn locked, others click-to-edit)
-  ticket-form.tsx                Problem-type grid + description + photos + submit logic
-  brand-header.tsx               Logo and title strip
+  support-app.tsx             Client wrapper; token forwarding and lifted form state.
+  installation-info.tsx       Editable customer/contact/installation info.
+  ticket-form.tsx             Problem type, description, photos, confirm view, submit.
+  brand-header.tsx            Sunterra header.
 
 lib/
-  env.ts                         Per-field lazy env validation
-  hmac.ts                        HMAC-SHA256 sign/verify (timing-safe)
-  sign-url.ts                    URL builder used by the dev test-link tool
-  token.ts                       verifyToken(URLSearchParams) → reason-tagged result
-  salesforce.ts                  OAuth + token cache + createCustomerCare() + uploadPhotoToCase() (Phase 2G) + findJobBySN() (Phase 2F-2 SOSL)
+  env.ts                      Lazy env validation.
+  hmac.ts                     HMAC canonical string + signature helpers.
+  token.ts                    URL verification and strict v1.1 validation.
+  salesforce.ts               OAuth, Customer_Care__c creation, photo upload, SOSL helper.
+  validation.ts               Shared field validators.
 
-types/installation.ts            Single canonical schema (InstallationData, UrlParams, …)
+types/
+  installation.ts             InstallationData / UrlParams / token result types.
 
-scripts/
-  test-sf-connection.ts          Connectivity / schema probe (kept for re-runs)
-  test-sf-write.ts               createCustomerCare smoke test (kept for re-runs)
-  test-photo-upload.ts           Phase 2G-1 single-photo upload helper test
-  test-partial-failure.ts        Phase 2G-3 partial-failure path regression test
-  test-sosl-lookup.ts            Phase 2F-2 SOSL findJobBySN test (4 cases)
-  fixtures/                      Test fixtures (gitignored except .gitkeep)
+tests/
+  hmac.spec.ts                Spec v1.1 HMAC canonicalization unit tests.
 
 docs/
-  handover.md                    ← this file
-  integration-spec.md            URL format + Growatt-facing contract
-  project-overview.md            Business context (stable, rarely edited)
+  integration-spec.md         Strict v1.1 URL/signature contract.
+  handover.md                 This file.
+  project-overview.md         High-level business overview.
 ```
 
-## Known tech debt
+## Working Mode for Future Agents
 
-Carried forward from previous handover, updated to today's state:
+- Start every task by checking branch and status.
+- Do not assume Desktop clone and code clone are the same. Recent active work
+  used `/Users/liushize/code/Sunterra-Support` because it has `milestone-2`.
+- Prefer reading existing local patterns before editing.
+- Keep changes tightly scoped to the user's request.
+- Show diff before commit when the user asks for staged review.
+- Do not push to `main` unless the user explicitly asks and production risk is
+  understood.
 
-- **`tests/ui.spec.ts` (Playwright) is rotted** — references old mock strings
-  (`"12 Pine Street"`, `"YRP0F7G0CG"`, `"Growatt SPH 6000"`) and the old DOM
-  of `InstallationInfo`. Defer to a test-phase cleanup.
-- **Mixed import style in `components/support-app.tsx`** — named imports for
-  `BrandHeader`/`TicketForm`, default import for `InstallationInfo`. Pick one
-  and standardise in a follow-up.
-- **`useEffect` in `InstallationInfo`** still carries
-  `// eslint-disable-next-line react-hooks/set-state-in-effect` on the
-  draft-sync effect. Modern React 19 guidance is `key={value}` or
-  derive-during-render. Refactor candidate.
-- **`README.md`** was updated in the 2026-05-20 handover session — no
-  longer mentions `SALESFORCE_USERNAME` / `SALESFORCE_PASSWORD`. Done.
-- **`docs/integration-spec.md`** was updated in the 2026-05-20 handover
-  session — URL format corrected to flat camelCase, "Open questions"
-  marked confirmed. Done.
-- **Salesforce does not validate ContentVersion image data**:
-  During Phase 2G-3 testing, SF accepted any byte stream (including
-  49-byte ASCII text and random characters) as valid image content
-  as long as mimeType claimed `image/jpeg`. In practice this isn't
-  triggered because `browser-image-compression` re-encodes via
-  Canvas which can only output valid JPEGs. But a malicious or
-  poorly-coded client could upload garbage files that occupy SF
-  storage and confuse support staff. Mitigations to consider
-  pre-launch: server-side magic-byte verification in
-  `uploadPhotoToCase()` (check first 3 bytes are `FF D8 FF` for
-  JPEG, etc).
-- **Photo upload: Promise.all parallel compression and encoding may
-  pressure memory on low-end devices**: Browser side, all 5 photos
-  compress + encode in parallel via `Promise.all`. Peak memory ~5 ×
-  (1MB image + canvas + base64 buffer) ≈ 15-20 MB transient. Most
-  iPhones and modern Android handle this fine; low-end Android 6/8
-  devices may OOM. If reports come in post-launch, switch to limited
-  concurrency (e.g. p-limit with concurrency 2-3) or sequential.
-- **Photo filenames not sanitized**: Customer's original file names
-  (e.g., `IMG_3421.HEIC`, or names with Chinese chars / emoji) are
-  passed directly to SF `ContentVersion.PathOnClient` field
-  (Text(255)). SF accepts most things, but extreme cases (>255
-  chars, certain reserved chars) would fail that one photo. Currently
-  handled by the per-photo failure path; could be improved with
-  client-side sanitization.
-- **Compression failure loses original photo**: If
-  `browser-image-compression` fails on a specific photo (e.g.,
-  corrupted source), the original is dropped rather than uploaded
-  raw. The warning banner says "1 photo was not attached" but
-  doesn't tell the user *which* photo. This is acceptable for v1
-  but a candidate for UX improvement.
-- **`scripts/test-partial-failure.ts` and `scripts/fixtures/broken.jpg`
-  are kept for regression testing of partial-failure path**. Can
-  be removed if regression suite is replaced with proper integration
-  tests. `broken.jpg` is gitignored (49 bytes of ASCII).
-- **SOSL index lag is a known Salesforce platform behavior**:
-  Newly-created or recently-edited `Job__c` records may take
-  5 seconds to ~2 minutes to appear in SOSL search results
-  (sandbox; production typically faster but no SLA). Impact:
-  if a customer activates installation on ShinePhone and submits
-  a support ticket within seconds, `findJobBySN()` may return
-  null even though the Job exists. Mitigation: the unmatched
-  branch already handles this gracefully (Case still created,
-  support reconciles), and in practice ShinePhone activation
-  happens days/weeks before any support ticket.
-- **SOSL `FIND` does not handle reserved tokens** (AND, OR, NOT, TO):
-  `escapeSosl()` escapes 17 reserved characters but not these
-  English words. If a customer's SN happens to be exactly "AND"
-  or "OR" (extremely unlikely for Growatt SNs which are
-  alphanumeric), the SOSL query would fail. Out of scope to
-  mitigate.
-- **Vercel platform constraints — current state**.
-  Body size: 4.5MB hard limit. Photo pipeline operates at
-  `maxSizeMB: 0.5` compression × 5 photos × 1.37 base64 inflation
-  ≈ 3.4MB worst case — safe margin maintained.
-  Function timeout: 10s. Serial upload of 5 photos can take 5-10s
-  under network jitter (each SF Files API call ~800ms-2s). No
-  failures observed in sandbox; will be monitored in production
-  once real photo-attached tickets arrive. Mitigation options if
-  the timeout starts triggering: limited concurrency (p-limit 2-3),
-  fire-and-forget photo uploads after Case creation, or Vercel Pro
-  Edge runtime (5min timeout).
-- **Local repo location: iCloud Desktop Sync incompatibility**.
-  Discovered 2026-05-24: when the repo lives at
-  `/Users/liushize/Desktop/Sunterra-Support`, iCloud Drive's
-  "Desktop & Documents Folders" sync intercepts file reads.
-  `npm run build` and `npm run dev` both fail with
-  `readFileSync ETIMEDOUT` on `app/globals.css`. Confirmed by
-  `defaults read MobileMeAccounts` showing the `CLOUDDESKTOP`
-  dataclass enabled. Fix: move repo to a non-synced path
-  (e.g., `~/code/Sunterra-Support`). Tracked as P2 outstanding item.
-- **`tsconfig.json` is silently rewritten by Next.js 16 during
-  `npm run build`**: Discovered during Phase 2F-2 Step #2 — Next.js
-  16.2.6 + Turbopack drops `strict: true` and the `@/*` path alias
-  when bootstrapping. Cursor reverted it with
-  `git checkout HEAD -- tsconfig.json` and build then passed.
-  Likely related to the existing "multiple lockfiles" warning
-  (root `/Users/liushize/package-lock.json` confuses Next's
-  workspace root detection). Fix: delete the stray root lockfile,
-  or add `outputFileTracingRoot` in `next.config.js` to pin the
-  workspace root explicitly. (Production deploy on 2026-05-24
-  succeeded despite this — Vercel uses the repo-root `tsconfig.json`
-  as committed; the rewrite only fires when `npm run build` runs
-  locally on a machine where Next's workspace heuristic mispicks.)
-- **Two `case_created` log lines per submission**: Phase 2F-2
-  added `[salesforce] createCustomerCare: case_created ...` inside
-  `lib/salesforce.ts` (with `job=NAME(ID)` enrichment), keeping
-  the existing `[/api/submit] case_created: ...` in route.ts.
-  Both lines contain "case_created" substring — log searches
-  will return 2× results. Intentional: different prefixes carry
-  different info.
-- **Sandbox test cases need manual cleanup** (multiple records under
-  the Integration User, accumulated from Phase 2F + Phase 2G testing).
-  Customer_Care__c records to delete in SF UI:
-  - `a1y8s00000EcTovAAF` (Phase 2F early test)
-  - `a1y8s00000EcTqXAAV` (Phase 2F early test)
-  - `a1y8s00000EcTtlAAF` (Phase 2F early test)
-  - `a1y8s00000EcUhlAAF` / Case-14060 (Phase 2F final verification;
-    can be deleted at Jack's discretion — Phase 2F-2 has its own
-    verification baseline at Case-14070)
-  - Case-14061 (caseNumber display rollout test)
-  - Case-14063 (Phase 2G-2 end-to-end test)
-  - Case-14066, Case-14067 (Phase 2G-3 failure path testing
-    — SF accepted any bytes as image content, see tech debt below)
-  - Case-14068 (Phase 2G-3 partial-failure final verification)
-  - Case-14070 (Phase 2F-2 happy path E2E test — SN TESTINV0010
-    matched to JOB-27763)
-  - Any Case created with SN=GW2024XK8B72 during Phase 2F-2 unmatched
-    testing (Job_Number__c empty by design; Auto Number value
-    depends on testing order)
+## Historical Notes
 
-  ContentVersion records (file attachments) will be deleted
-  automatically when their parent Customer_Care__c is deleted.
-- **Production test cases (2026-05-24 deploy audit trail)** — all three
-  created and immediately deleted by admin user via SF UI (integration
-  user lacks Delete on `Customer_Care__c`):
-  - `Case-14083` — curl POST OAuth test ("Production OAuth test")
-  - `Case-14084` — web form E2E ("Support: Battery issue")
-  - `Case-14085` — web form E2E second pass ("Support: Inverter Issue")
+Older handover sections from 2026-05-24 to 2026-06-01 mentioned:
 
-  No further production cleanup needed; listed for audit trail only.
-- **Unused `TicketSubmission` type** in `types/installation.ts` — defined but
-  never imported. Either wire it in or delete it.
+- DNS cutover pending from `sunterra-support.vercel.app` to
+  `support.sunterra.com.au`.
+- `.env.local` temporarily pointing at production.
+- Turbopack as the default tech stack.
+- Growatt contract still missing required SN fields.
 
-## How to test locally
-
-1. Make sure `.env.local` is configured with HMAC secret + Salesforce
-   Client Credentials + **sandbox** `SALESFORCE_INSTANCE_URL`. Copy
-   `.env.example` if starting fresh. **As of 2026-05-24, `.env.local`
-   is temporarily pointed at production** for curl smoke tests during
-   the production deploy — restore the sandbox values from
-   `.env.local.sandbox-backup` before running `npm run dev`, otherwise
-   local form submissions will create real production cases.
-2. `npm run dev`
-3. Open `http://localhost:3000/dev/test-link` — the dev-only test-URL
-   generator. Pick "valid" and hit "Generate test URL".
-4. Click through the generated URL → edit installation info if desired →
-   pick a problem type, type a description → "Submit ticket".
-5. On success the page redirects to `/success?caseId=…`. Open the sandbox at
-   `https://sunterra--dev.sandbox.my.salesforce.com` and check the
-   `Customer_Care__c` record exists with the expected field values.
-6. To test against production (**curl only — never via `npm run dev`**
-   to avoid creating stray production cases), temporarily swap in the
-   production credentials, run the curl, then immediately restore
-   `.env.local.sandbox-backup`.
-
-If the test-link page 404s, you're not in development mode — check `NODE_ENV`.
-
-## Working mode (for Claude / AI assistants joining the project)
-
-This is a multi-party project. Roles:
-
-- **Sunterra tech coordinator** — owns the project, drives the schedule,
-  reviews everything, owns Salesforce admin work directly, talks to Lily
-  (Sunterra owner) on business decisions and to Growatt on the ShinePhone
-  integration.
-- **Salesforce admin** — Jack. Owns the SF data model for this project:
-  configures the External Client App, Permission Sets, Integration User,
-  picklist values; implemented the SN → `Job__c` SOSL lookup in
-  Phase 2F-2 (replacing the originally-planned Phase 2I Flow).
-  Historical baseline (the `Customer_Care__c` object and most of its
-  picklist values) was set up years ago by Lily Zhou; she is no longer
-  hands-on.
-- **Growatt** — ShinePhone integration partner. Will eventually sign URLs and
-  redirect users to this web app.
-- **Claude (planning AI)** — gives strategy, writes the structured Cursor
-  prompts (does not edit code directly).
-- **Cursor agent (coding AI)** — executes the code changes inside the IDE,
-  reports back results.
-
-Communication loop:
-
-1. Planning AI writes a Cursor prompt with:
-   - **Business context** (1–2 paragraphs)
-   - **Task list** numbered Step 1 / Step 2 / …
-   - A **🔴 forbidden** list and a **🟢 required** list (be explicit, leave no
-     "interpret as you wish" room)
-   - A fixed **report format** (sections A / B / C / …)
-   - "Stop and report when done, do not proceed."
-2. Coding AI executes, reports back exactly in that format.
-3. Tech coordinator reviews the report → either approves the next phase or
-   feeds the report back to the planning AI for revision.
-
-> **Design discipline reminder:** When new technical approaches
-> supersede prior designs (e.g., Phase 2F-2 replacing the planned
-> Phase 2I Flow), update this handover *before* declaring the
-> phase complete. Decisions that are not documented are decisions
-> that future contributors (including future Claude sessions)
-> will misinterpret.
-
-When you (a future planning AI) write Cursor prompts:
-
-- Always state what NOT to touch (it's the cheapest way to prevent damage).
-- Always require a fixed report shape so reviews are mechanical.
-- Prefer small, locked-down steps with a verification gate between them, over
-  one big "implement everything".
-- Salesforce assumptions are dangerous — read this handover's Salesforce
-  section before guessing field names, object names, or query strategies.
-
-## Update: 2026-05-26 to 2026-06-01
-
-This section appends the production-hardening work completed after the
-2026-05-24 handover baseline. Keep the earlier sections above for historical
-context; they document the original architecture and Salesforce decisions.
-
-### 2026-05-26 — iOS end-to-end success, old Android WebView issues exposed
-
-- Completed several integration bug fixes around the Growatt URL contract:
-  timestamp second-level alignment, HMAC empty-string field handling,
-  IP/User-Agent verification failure logging, and TTL clock-skew tolerance.
-- iOS Safari test passed end to end. Production `Customer_Care__c` case
-  `Case-14111` was successfully created.
-- Old Android WebView exposed runtime failures:
-  - `e.entries.at is not a function`
-  - `Unexpected token =`
-  - other old-engine `SyntaxError` failures from modern JavaScript syntax.
-- A `proxy.ts` / server-side HTML injection approach for early polyfill
-  placement was attempted, then failed in practice and was force-reverted.
-  It is **not** on `main`.
-
-### 2026-05-27 — Android compatibility push, six commits
-
-Diagnosis path:
-
-1. Reproduced in emulators: Android 10 Chrome 74 and Android 11 Chrome 91.
-2. Confirmed the user device is Huawei WebView 11 on Honor Play 6T.
-3. Layer-by-layer diagnosis showed the issue was not one bug, but the
-   combination of Tailwind CSS v4 modern CSS output and Next.js 16 Turbopack
-   build behavior on old WebViews.
-
-Full fix chain (preserve this list for future debugging):
-
-1. `88c4dd4` — `build: switch from turbopack to webpack`
-   - Turbopack in Next.js 16 does not read `package.json` `browserslist`.
-   - Result: SWC did not downlevel ES2021+ syntax such as `??=`, `??`, and
-     `?.`; old WebViews failed immediately with `SyntaxError`.
-   - Switching to webpack made browserslist-driven downleveling work.
-2. `bca27fd` — `fix: oklch/color-mix fallbacks`
-   - Added PostCSS fallbacks for `oklch()` and `color-mix()`.
-   - Chrome 80-91 reads the generated `rgb()` / `rgba()` fallback.
-   - Modern browsers keep the original `oklch()` / `color-mix()` path.
-3. `3338e88` — `fix: flatten Tailwind v4 nesting`
-   - Added `postcss-nesting` to flatten native CSS nesting such as
-     `&:hover`.
-   - Native nesting is Chrome 112+ only; Chrome 80-91 silently mishandles it.
-4. `5d673e3` — `style: show card visual on all viewports`
-   - Removed `md:` gating from the card visual styles so mobile users also
-     see the intended card background, radius, and shadow.
-   - Previously those visuals only appeared at widths >= 768px.
-5. `a39a492` — `fix: expand @layer cascade layers`
-   - The key fix. Tailwind v4 wraps almost all generated CSS in `@layer`
-     blocks.
-   - Cascade layers require Chrome 99+. Chrome 91 silently ignores the
-     entire layer block, causing almost every utility class to disappear.
-   - Added `@csstools/postcss-cascade-layers` to expand layers into
-     traditional CSS while preserving cascade precedence.
-6. `9d21867` — `feat: require problem type + description, disable iOS auto-zoom`
-   - Submit button now disables unless problem type is selected and
-     description is non-empty after trim.
-   - Added the Next.js `viewport` export in `app/layout.tsx` to prevent iOS
-     automatic zoom on focused inputs.
-
-### Key technical decisions
-
-#### Build tool
-
-- Must use `next build --webpack`, not default Turbopack.
-- Reason: Turbopack in Next.js 16 does not read `package.json`
-  `browserslist`, so old WebView JavaScript syntax downleveling is not
-  reliable.
-- Current `package.json` build script:
-
-```json
-"build": "next build --webpack"
-```
-
-#### PostCSS fallback chain
-
-The PostCSS pipeline in `postcss.config.mjs` is order-sensitive:
-
-1. `@tailwindcss/postcss` — compile Tailwind v4.
-2. `@csstools/postcss-cascade-layers` — expand `@layer`.
-3. `postcss-nesting` — expand `&` nesting.
-4. `@csstools/postcss-color-mix-function` — add `color-mix()` fallback.
-5. `@csstools/postcss-oklab-function` — add `oklch()` / `oklab()` fallback.
-
-If the order changes, the fallback chain can break. The color fallback
-plugins use `preserve: true` so modern browsers retain the modern CSS values
-while old Chrome/WebView falls back to generated `rgb()` / `rgba()` values.
-
-#### Browserslist
-
-Current `package.json` target:
-
-```json
-"browserslist": [
-  "chrome >= 80",
-  "edge >= 80",
-  "firefox >= 78",
-  "safari >= 14",
-  "ios_saf >= 14"
-]
-```
-
-### 2026-05-27 verification results
-
-- iOS Safari: complete end-to-end flow passed.
-- Android emulator:
-  - API 29 / Chrome 74: UI visually matched iOS, console had zero errors.
-  - API 30 / Chrome 91: UI visually matched iOS, console had zero errors.
-- User's real device: Honor Play 6T, Android 11 + Huawei WebView 11.
-  - Full flow passed.
-  - Production case `Case-14135` was successfully created.
-
-### Known small issues after Android hardening
-
-These were discussed with Lily and do not block launch:
-
-1. On real Huawei WebView, the success-page checkmark icon is slightly left
-   of center. Likely caused by ShinePhone WebView container spacing, not a
-   product bug.
-2. `rounded-full` compiles to `border-radius: 3.40282e+38px`. Chrome 91 does
-   not parse that scientific-notation radius. Impact is limited to whether
-   the "Verified" pill is perfectly capsule-shaped; no business flow impact.
-3. Local `npm run build` can fail during `/_not-found` prerender. This is a
-   local Node 24 + React 19 + Next 16 issue. Vercel CI is not affected.
-
-### 2026-06-01 current status
-
-- Waiting for Growatt production launch. Target was Monday/Tuesday that week;
-  exact timing to be confirmed by Ze.
-- Lily confirmed Sunterra will start with a few older customers as a gray
-  rollout, improve based on feedback, then expand to all users.
-- Sunterra internal ShinePhone test account requested via Mohammed. Before
-  full launch, run one complete self-test from the app.
-- Salesforce data-flow audit completed:
-  - `Customer_Care__c.Customer_Name__c` is a plain text/string field, not a
-    lookup to Account or Contact.
-  - Live `Customer_Care__c` describe showed 58 fields.
-  - No Account/Contact lookup fields are present on `Customer_Care__c`.
-  - Current design is an independent support-ticket model, not Account/Contact
-    association.
-
-### Post-launch TODOs
-
-- **P1:** Clean up production test cases:
-  - `Case-14111`
-  - `Case-14135`
-  - accumulated `[APP TEST]` cases
-- **P2:** Restore `.env.local` to sandbox configuration. It is currently
-  pointed at production.
-- **P3:** Change Salesforce field
-  `Customer_Care__c.Inverter_Battery_Serials__c` from `Text(50)` to Long Text
-  Area.
-- **P4:** Monitor real case creation for the first few days after launch.
+Those notes are historical and no longer describe the current state. The
+current production URL is `https://support.sunterra.com.au/`, local `.env.local`
+points at the test sandbox, and strict v1.1 is documented in
+`docs/integration-spec.md`.

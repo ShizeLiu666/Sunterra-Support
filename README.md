@@ -7,10 +7,14 @@ A mobile-first ticket submission web app for Sunterra customers, opened via deep
 ```bash
 npm install
 cp .env.example .env.local   # then fill in real values
-npm run dev
+export PATH="$HOME/.nvm/versions/node/v20.19.5/bin:$PATH"
+POSTCSS_SKIP_FALLBACKS=1 npx next dev --webpack
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Branch status: `main` is production (`https://support.sunterra.com.au/`);
+`milestone-2` is the strict v1.1 Preview branch.
 
 ## Project structure
 
@@ -21,12 +25,14 @@ app/
   globals.css         Tailwind v4 + Sunterra brand color tokens
   success/page.tsx    Shown after a ticket is created
   expired/page.tsx    Shown when the deep-link token is invalid/expired
-  api/submit/route.ts POST endpoint: re-verifies the deep-link token server-side
-                      and creates the Salesforce Customer_Care__c record
+  api/submit/route.ts POST endpoint: re-verifies all signed URL params
+                      generically and creates the Salesforce Customer_Care__c
 components/           Reusable UI components
 lib/
   token.ts            HMAC-SHA256 deep-link token verification
   salesforce.ts       Salesforce Case creation client
+tests/
+  hmac.spec.ts        Locks spec v1.1 HMAC canonicalization examples
 public/               Static assets
 ```
 
@@ -73,9 +79,22 @@ openssl rand -hex 32
 In development mode (`NODE_ENV=development`) the app exposes a helper at
 [http://localhost:3000/dev/test-link](http://localhost:3000/dev/test-link).
 
-It generates HMAC-signed deep-link URLs that mimic what the ShinePhone App will
-eventually produce, so you can exercise the form without having to construct
-signatures by hand. Pick from preset variants (valid / expired / tampered /
-missing-sn) and the page returns a clickable URL.
+That page still exists, with preset variants such as valid / expired /
+tampered / missing-sn, but it is a legacy helper and does **not** generate the
+strict v1.1 URL shape.
 
 These endpoints are gated by `NODE_ENV` and return 404 in production builds.
+
+For strict v1.1 testing, use the local script instead:
+
+```bash
+TEST_BASE_URL=http://localhost:3000/ npx tsx scripts/gen-prod-test-url.local.ts
+```
+
+Replace `TEST_BASE_URL` with a Preview or production host when needed. The
+script is gitignored (`*.local.ts`) and emits strict v1.1 signed URLs, including
+a known-match sandbox SN (`NTCIA01092`).
+
+On `milestone-2`, `/api/submit` forwards every signed URL param for
+re-verification instead of using a hard-coded whitelist, and
+`tests/hmac.spec.ts` locks the strict v1.1 HMAC worked examples.
