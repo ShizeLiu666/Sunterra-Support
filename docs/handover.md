@@ -57,6 +57,9 @@
 
 - `milestone-2` is not yet production. It contains strict v1.1 behavior and
   extra form/confirmation UX not present on `main`.
+- Preview 环境已设置 `ENABLE_SOSL_JOB_LOOKUP=true`(Vercel scope=Preview),用于
+  SN→Job__c 匹配调试;`main`/生产未启用(milestone-2 单 SN 适用,main 多 SN
+  不可开)。将来 `milestone-2` 合并上线前需重新评估 `main` 的 SN 匹配策略。
 
 ## What This Project Is
 
