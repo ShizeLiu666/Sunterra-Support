@@ -207,7 +207,7 @@ function ReviewBlock({ label, value }: { label: string; value?: string }) {
     <div className="py-2.5 first:pt-0 last:pb-0">
       <span className="mb-1 block text-sm text-sunterra-dark/60">{label}</span>
       <p
-        className={`whitespace-pre-wrap break-words text-sm ${
+        className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm ${
           hasValue ? "text-sunterra-dark" : "text-sunterra-dark/40"
         }`}
       >
@@ -575,14 +575,14 @@ export function TicketForm({
               <span className="mb-2 block text-sm text-sunterra-dark/60">
                 Photos
               </span>
-              <ul className="flex flex-wrap gap-2">
+              <ul className="grid grid-cols-4 gap-2">
                 {photos.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={previewUrls[index]}
                       alt={`Photo ${index + 1}`}
-                      className="h-20 w-20 rounded-lg border border-gray-200 object-cover"
+                      className="aspect-square w-full rounded-lg border border-gray-200 object-cover"
                     />
                   </li>
                 ))}
@@ -765,7 +765,7 @@ export function TicketForm({
         {photos.length > 0 && (
           <ul
             aria-label="Uploaded photos"
-            className="mb-3 flex flex-wrap gap-2"
+            className="mb-3 grid grid-cols-4 gap-2"
           >
             {photos.map((file, index) => (
               <li key={`${file.name}-${file.size}-${index}`} className="relative">
@@ -773,16 +773,16 @@ export function TicketForm({
                 <img
                   src={previewUrls[index]}
                   alt={`Uploaded photo ${index + 1}`}
-                  className="h-20 w-20 rounded-lg border border-gray-200 object-cover"
+                  className="aspect-square w-full rounded-lg border border-gray-200 object-cover"
                 />
                 <button
                   type="button"
                   onClick={() => removePhoto(index)}
                   disabled={isSubmitting}
                   aria-label={`Remove photo ${index + 1}`}
-                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sunterra-dark text-white shadow-sm [-webkit-tap-highlight-color:transparent] disabled:opacity-60"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-sunterra-dark text-white shadow-sm [-webkit-tap-highlight-color:transparent] disabled:opacity-60"
                 >
-                  <X size={14} strokeWidth={2.5} aria-hidden="true" />
+                  <X size={12} strokeWidth={2.5} aria-hidden="true" />
                 </button>
               </li>
             ))}
