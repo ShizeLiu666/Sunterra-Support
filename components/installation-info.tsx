@@ -10,10 +10,16 @@ const FIELD_MAX_LENGTH = {
   address: 50,
 } as const;
 
+// Australian states/territories (abbreviations) — written to
+// Customer_Care__c.Installation_State__c (Text(10), confirmed to exist).
+const AU_STATES = ["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"] as const;
+
 interface InstallationInfoProps {
   data: InstallationData;
   /** Called when user finishes editing a field (onBlur) */
   onChange?: (data: InstallationData) => void;
+  /** Submit-time inline errors for the required contact fields. */
+  errors?: { address?: string | null; state?: string | null };
 }
 
 /**
@@ -26,6 +32,7 @@ interface InstallationInfoProps {
 export default function InstallationInfo({
   data,
   onChange,
+  errors,
 }: InstallationInfoProps) {
   return (
     <section className="bg-sunterra-light/40 rounded-xl p-4 md:p-5">
@@ -60,8 +67,16 @@ export default function InstallationInfo({
           value={data.address}
           placeholder="Add your address"
           multiline
+          required
+          fieldId="contact-address"
+          error={errors?.address}
           maxLength={FIELD_MAX_LENGTH.address}
           onSave={(v) => onChange?.({ ...data, address: v })}
+        />
+        <StateSelectRow
+          value={data.state}
+          error={errors?.state}
+          onChange={(v) => onChange?.({ ...data, state: v })}
         />
 
         {data.inverterModel && (
@@ -127,6 +142,9 @@ interface EditableRowProps {
   type?: "text" | "email";
   maxLength?: number;
   multiline?: boolean;
+  required?: boolean;
+  error?: string | null;
+  fieldId?: string;
   onSave: (value: string) => void;
 }
 
@@ -137,6 +155,9 @@ function EditableRow({
   type = "text",
   maxLength,
   multiline = false,
+  required = false,
+  error,
+  fieldId,
   onSave,
 }: EditableRowProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -191,6 +212,9 @@ function EditableRow({
       <div className="flex items-start justify-between gap-3">
         <label className="text-sm text-sunterra-dark/60 shrink-0 pt-0.5">
           {label}
+          {required && (
+            <span className="text-red-500" aria-hidden="true"> *</span>
+          )}
         </label>
 
         <div className="flex-1 min-w-0 flex items-start justify-end gap-2">
@@ -221,6 +245,7 @@ function EditableRow({
           ) : (
             <button
               type="button"
+              id={fieldId}
               onClick={() => setIsEditing(true)}
               className="group flex items-start justify-end gap-1.5 text-right min-w-0 flex-1 hover:opacity-80 transition-opacity"
               aria-label={`Edit ${label}`}
@@ -242,6 +267,59 @@ function EditableRow({
           )}
         </div>
       </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-right text-xs text-red-500">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface StateSelectRowProps {
+  value: string | undefined;
+  error?: string | null;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Required State/Territory dropdown. Native <select> (zero deps, reliable on
+ * old WebViews). Writes the selected AU abbreviation up to
+ * installationData.state, which TicketForm forwards as installationState →
+ * Customer_Care__c.Installation_State__c.
+ */
+function StateSelectRow({ value, error, onChange }: StateSelectRowProps) {
+  return (
+    <div className="py-3 first:pt-0 last:pb-0">
+      <div className="flex items-center justify-between gap-3">
+        <label
+          htmlFor="contact-state"
+          className="text-sm text-sunterra-dark/60 shrink-0"
+        >
+          State
+          <span className="text-red-500" aria-hidden="true"> *</span>
+        </label>
+        <select
+          id="contact-state"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-w-0 max-w-[60%] text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 text-right focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40"
+        >
+          <option value="" disabled>
+            Select state
+          </option>
+          {AU_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-right text-xs text-red-500">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

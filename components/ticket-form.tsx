@@ -25,6 +25,8 @@ import type { InstallationData, UrlParams } from "@/types/installation";
 interface TicketFormProps {
   installationData: InstallationData;
   token: UrlParams | null;
+  /** Submit-time validation hook; return false to abort the submit. */
+  onValidateBeforeSubmit?: () => boolean;
 }
 
 interface SubmitResponseBody {
@@ -175,7 +177,11 @@ async function compressPhoto(file: File): Promise<File | null> {
   }
 }
 
-export function TicketForm({ installationData, token }: TicketFormProps) {
+export function TicketForm({
+  installationData,
+  token,
+  onValidateBeforeSubmit,
+}: TicketFormProps) {
   const router = useRouter();
 
   const [problemType, setProblemType] = useState<string>("");
@@ -187,8 +193,10 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
     "idle" | "preparing_photos" | "submitting" | "attaching_photos"
   >("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
 
   // Preview URLs are created during render so the first paint already has them;
   // cleanup happens once the photos list changes (or on unmount).
@@ -201,6 +209,17 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
       previewUrls.forEach(URL.revokeObjectURL);
     };
   }, [previewUrls]);
+
+  // Focus the confirm button when the modal opens; Escape closes it.
+  useEffect(() => {
+    if (!showConfirm) return;
+    confirmBtnRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowConfirm(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showConfirm]);
 
   const atMaxPhotos = photos.length >= MAX_PHOTOS;
 
@@ -237,8 +256,22 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
     setPhotoError(null);
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmitting) return;
+
+    // Empty address/state → inline red error + focus (no modal: can't confirm
+    // an empty value). Abort before opening the modal.
+    if (onValidateBeforeSubmit && !onValidateBeforeSubmit()) {
+      return;
+    }
+
+    // Both present → open the confirm modal. The real network submit runs only
+    // after the user taps "Confirm & Submit".
+    setShowConfirm(true);
+  };
+
+  const performSubmit = async () => {
     if (isSubmitting) return;
 
     if (!token) {
@@ -314,6 +347,7 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
     if (installationData.name) formPayload.customerName = installationData.name;
     if (installationData.email) formPayload.email = installationData.email;
     if (installationData.address) formPayload.installationStreet = installationData.address;
+    if (installationData.state) formPayload.installationState = installationData.state;
 
     try {
       const res = await fetch("/api/submit", {
@@ -360,6 +394,11 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
       setIsSubmitting(false);
       setSubmitStage("idle");
     }
+  };
+
+  const handleConfirmSubmit = () => {
+    setShowConfirm(false);
+    void performSubmit();
   };
 
   return (
@@ -529,6 +568,59 @@ export function TicketForm({ installationData, token }: TicketFormProps) {
           </p>
         </div>
       </div>
+
+      {showConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowConfirm(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="confirm-title"
+              className="text-base font-semibold text-sunterra-dark"
+            >
+              Please confirm your address and state are correct and complete
+            </h2>
+            <dl className="mt-4 divide-y divide-gray-100 rounded-xl border border-gray-200">
+              <div className="flex items-start justify-between gap-3 px-3 py-2.5">
+                <dt className="shrink-0 text-sm text-sunterra-dark/60">Address</dt>
+                <dd className="min-w-0 break-words [overflow-wrap:anywhere] text-right text-sm text-sunterra-dark">
+                  {installationData.address}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <dt className="shrink-0 text-sm text-sunterra-dark/60">State</dt>
+                <dd className="text-right text-sm text-sunterra-dark">
+                  {installationData.state}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="h-11 flex-1 rounded-lg border border-gray-300 text-sm font-medium text-sunterra-dark active:bg-gray-50"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                ref={confirmBtnRef}
+                onClick={handleConfirmSubmit}
+                className="h-11 flex-1 rounded-lg bg-sunterra-primary text-sm font-medium text-white active:bg-[#136a50]"
+              >
+                Confirm &amp; Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

@@ -25,6 +25,7 @@ export interface InstallationData {
   name?: string; // Customer name (could be account name, user-editable)
   email?: string; // Customer email (primary contact method)
   address?: string; // Installation address
+  state?: string; // Installation state/territory (AU abbrev; user-selected in form, NOT from URL / not signed)
   inverterModel?: string; // Inverter model (e.g., "MIN3000TL-XH")
   language?: string; // Language code (e.g., "en-AU", "zh-CN")
 }

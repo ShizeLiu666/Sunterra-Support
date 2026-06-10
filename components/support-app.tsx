@@ -61,6 +61,36 @@ export default function SupportApp({
   const [installationData, setInstallationData] =
     useState<InstallationData>(initialData);
   const [token] = useState<UrlParams | null>(() => readTokenFromUrl());
+  const [fieldErrors, setFieldErrors] = useState<{
+    address?: string;
+    state?: string;
+  }>({});
+
+  // Submit-time only (no realtime/onBlur). Returns true when address + state
+  // are both present; otherwise sets inline errors and scrolls/focuses the
+  // first empty field. Called by TicketForm at the top of handleSubmit.
+  const validateContactBeforeSubmit = (): boolean => {
+    const next: { address?: string; state?: string } = {};
+    if (!installationData.address?.trim()) {
+      next.address = "Please enter your installation address";
+    }
+    if (!installationData.state?.trim()) {
+      next.state = "Please select your state";
+    }
+    setFieldErrors(next);
+    const firstInvalidId = next.address
+      ? "contact-address"
+      : next.state
+        ? "contact-state"
+        : null;
+    if (firstInvalidId) {
+      const el = document.getElementById(firstInvalidId);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus({ preventScroll: true });
+      return false;
+    }
+    return true;
+  };
 
   return (
     <main className="min-h-screen bg-white md:p-8 md:bg-gradient-to-br md:from-sunterra-light/30 md:to-white">
@@ -86,8 +116,13 @@ export default function SupportApp({
         <InstallationInfo
           data={installationData}
           onChange={setInstallationData}
+          errors={fieldErrors}
         />
-        <TicketForm installationData={installationData} token={token} />
+        <TicketForm
+          installationData={installationData}
+          token={token}
+          onValidateBeforeSubmit={validateContactBeforeSubmit}
+        />
       </div>
     </main>
   );
