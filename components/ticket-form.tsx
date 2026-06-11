@@ -501,10 +501,14 @@ export function TicketForm({
         data.success !== true ||
         typeof data.caseNumber !== "string"
       ) {
-        const message =
-          (data && typeof data.error === "string" && data.error) ||
-          `Server error (${res.status})`;
-        setSubmitError(message);
+        // Keep technical detail in the console; show the user a friendly,
+        // code-free message (per UI rule: no raw error codes).
+        const detail =
+          data && typeof data.error === "string" ? data.error : "(no body)";
+        console.error(
+          `[submit] failed: status=${res.status} ok=${res.ok} serverError=${detail}`
+        );
+        setSubmitError("Something went wrong. Please try again.");
         setIsSubmitting(false);
         setSubmitStage("idle");
         return;
@@ -518,7 +522,8 @@ export function TicketForm({
           : `/success?caseNumber=${encodeURIComponent(data.caseNumber)}`;
       router.push(successUrl);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Network error");
+      console.error("[submit] network/exception:", err);
+      setSubmitError("Something went wrong. Please try again.");
       setIsSubmitting(false);
       setSubmitStage("idle");
     }

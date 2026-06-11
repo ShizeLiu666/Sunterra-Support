@@ -101,8 +101,9 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
           >
             <p>
               Note: {photoWarning}{" "}
-              {photoWarning === 1 ? "photo was" : "photos were"} not attached.
-              If any are important, please email us at XXX.
+              {photoWarning === 1 ? "photo was" : "photos were"} not attached,
+              but your ticket was submitted successfully. If you have photos to
+              add, our team will follow up with you shortly.
             </p>
           </div>
         )}
