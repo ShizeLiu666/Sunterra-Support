@@ -22,6 +22,7 @@
     "not dead"
   ],
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "browser-image-compression": "^2.0.2",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
