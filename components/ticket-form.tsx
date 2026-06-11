@@ -19,6 +19,7 @@ import {
   Wrench,
   HelpCircle,
   X,
+  Info,
   type LucideIcon,
 } from "lucide-react";
 import imageCompression from "browser-image-compression";
@@ -553,14 +554,21 @@ export function TicketForm({
           <h2 className="text-base font-semibold text-sunterra-dark">
             Review your request
           </h2>
-          <p className="mt-1 text-sm text-sunterra-dark/60">
-            Please confirm the details below are{" "}
-            <strong className="font-semibold text-inherit">accurate</strong>{" "}
-            and reflect your{" "}
-            <strong className="font-semibold text-inherit">
-              actual situation
-            </strong>. Our team will use this information to assist you.
-          </p>
+          <div className="mt-2 flex items-start gap-2 rounded-lg bg-sunterra-light p-3">
+            <Info
+              className="mt-0.5 h-4 w-4 shrink-0 text-sunterra-primary"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <p className="text-sm text-sunterra-dark">
+              Please confirm the details below are{" "}
+              <strong className="font-semibold text-inherit">accurate</strong>{" "}
+              and reflect your{" "}
+              <strong className="font-semibold text-inherit">
+                actual situation
+              </strong>. Our team will use this information to assist you.
+            </p>
+          </div>
         </div>
 
         {/* What you entered */}
@@ -630,13 +638,40 @@ export function TicketForm({
               disabled={isSubmitting}
               className="block h-12 w-full rounded-lg bg-sunterra-primary text-base font-medium text-white transition-colors duration-150 hover:bg-[#178362] active:bg-[#136a50] disabled:cursor-not-allowed disabled:bg-sunterra-primary/60 disabled:hover:bg-sunterra-primary/60"
             >
-              {submitStage === "preparing_photos"
-                ? "Preparing photos..."
-                : submitStage === "submitting"
-                  ? "Submitting..."
-                  : submitStage === "attaching_photos"
-                    ? "Attaching photos..."
-                    : "Confirm & submit"}
+              {isSubmitting ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <svg
+                    className="sunterra-spinner h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      opacity="0.25"
+                    />
+                    <path
+                      d="M12 2a10 10 0 0 1 10 10"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <span>
+                    {submitStage === "preparing_photos"
+                      ? "Preparing photos..."
+                      : submitStage === "attaching_photos"
+                        ? "Attaching photos..."
+                        : "Submitting..."}
+                  </span>
+                </span>
+              ) : (
+                "Confirm & submit"
+              )}
             </button>
             <button
               type="button"

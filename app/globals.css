@@ -28,3 +28,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Submit-button spinner. Deliberately old-WebView-safe: a plain top-level
+ * @keyframes (NOT inside @layer) animating only `transform: rotate`. No
+ * color-mix, no @property, no modern CSS — works on legacy Android/ShinePhone
+ * WebViews. Applied to the outer <svg>, which rotates around its own centre.
+ */
+@keyframes sunterra-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sunterra-spinner {
+  animation: sunterra-spin 0.7s linear infinite;
+}
