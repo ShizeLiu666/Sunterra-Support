@@ -18,6 +18,7 @@ type TicketField =
   | "email"
   | "mobile"
   | "address"
+  | "state"
   | "problemType"
   | "description";
 
@@ -26,6 +27,7 @@ const FIELD_ORDER: readonly TicketField[] = [
   "email",
   "mobile",
   "address",
+  "state",
   "problemType",
   "description",
 ];
@@ -99,6 +101,7 @@ export default function SupportApp({
     email: validateEmail(installationData.email),
     mobile: validateAuMobile(installationData.mobile),
     address: validateRequired(installationData.address, "Address"),
+    state: validateRequired(installationData.state, "State"),
     problemType: problemType ? null : "Please select a problem type",
     description: description.trim() ? null : "Please describe the issue",
   };
@@ -145,12 +148,14 @@ export default function SupportApp({
               email: visibleError("email"),
               mobile: visibleError("mobile"),
               address: visibleError("address"),
+              state: visibleError("state"),
             }}
             valid={{
               name: isValid("name"),
               email: isValid("email"),
               mobile: isValid("mobile"),
               address: isValid("address"),
+              state: isValid("state"),
             }}
             onFieldTouched={markTouched}
           />

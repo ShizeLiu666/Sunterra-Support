@@ -26,6 +26,7 @@ export interface InstallationData {
   email?: string; // Customer email (primary contact method)
   mobile?: string; // Customer mobile (user-entered; not part of the URL token)
   address?: string; // Installation address
+  state?: string; // Installation state/territory (AU abbrev; user-selected in form, NOT from URL / not signed)
 
   // spec v1.1: selected device context (describes the chosen `sn`).
   deviceType?: "inverter" | "battery"; // §3.2 enum; undefined when sent empty

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Pencil, Check } from "lucide-react";
 import type { InstallationData } from "@/types/installation";
 
-type ContactField = "name" | "email" | "mobile" | "address";
+type ContactField = "name" | "email" | "mobile" | "address" | "state";
 
 const FIELD_MAX_LENGTH = {
   name: 50,
@@ -12,6 +12,10 @@ const FIELD_MAX_LENGTH = {
   mobile: 20,
   address: 50,
 } as const;
+
+// Australian states/territories (abbreviations) — written to
+// Customer_Care__c.Installation_State__c (Text(10), confirmed to exist).
+const AU_STATES = ["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"] as const;
 
 interface InstallationInfoProps {
   data: InstallationData;
@@ -99,6 +103,15 @@ export default function InstallationInfo({
           isValid={valid?.address}
           onTouched={() => onFieldTouched?.("address")}
           onSave={(v) => onChange?.({ ...data, address: v })}
+        />
+        <StateSelectRow
+          value={data.state}
+          isValid={valid?.state}
+          error={errors?.state}
+          onChange={(v) => {
+            onChange?.({ ...data, state: v });
+            onFieldTouched?.("state");
+          }}
         />
 
         {data.inverterModel && (
@@ -311,6 +324,68 @@ function EditableRow({
           role="alert"
           className="mt-1.5 text-right text-xs text-red-500"
         >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface StateSelectRowProps {
+  value: string | undefined;
+  /** Drives required-star color immediately (green when valid, red otherwise). */
+  isValid?: boolean;
+  /** Pre-gated error message from the parent; renders under the control. */
+  error?: string | null;
+  onChange: (value: string) => void;
+}
+
+/**
+ * Required State/Territory dropdown. Native <select> (zero deps, reliable on
+ * old WebViews). Mirrors EditableRow's required-star + error + scroll hooks so
+ * it plugs into the same validation framework. Writes the selected AU
+ * abbreviation to installationData.state → forwarded as installationState →
+ * Customer_Care__c.Installation_State__c.
+ */
+function StateSelectRow({ value, isValid = false, error, onChange }: StateSelectRowProps) {
+  const starColorClass = isValid ? "text-sunterra-primary" : "text-red-500";
+  return (
+    <div
+      className="py-3 first:pt-0 last:pb-0"
+      data-validation-field="state"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <label
+          htmlFor="contact-state"
+          className="text-sm text-sunterra-dark/60 shrink-0"
+        >
+          State
+          <span
+            className={`transition-colors duration-150 ${starColorClass}`}
+            aria-hidden="true"
+          >
+            {" "}
+            *
+          </span>
+        </label>
+        <select
+          id="contact-state"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-w-0 max-w-[60%] text-sm text-sunterra-dark bg-white border border-sunterra-primary/30 rounded-md px-2 py-1.5 text-right focus:outline-none focus:ring-2 focus:ring-sunterra-primary/40"
+        >
+          <option value="" disabled>
+            Select state
+          </option>
+          {AU_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 text-right text-xs text-red-500">
           {error}
         </p>
       )}

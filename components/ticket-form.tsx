@@ -30,6 +30,7 @@ type ValidationField =
   | "email"
   | "mobile"
   | "address"
+  | "state"
   | "problemType"
   | "description";
 
@@ -474,6 +475,7 @@ export function TicketForm({
     if (installationData.email) formPayload.email = installationData.email;
     if (installationData.mobile) formPayload.mobile = installationData.mobile;
     if (installationData.address) formPayload.installationStreet = installationData.address;
+    if (installationData.state) formPayload.installationState = installationData.state;
 
     try {
       const res = await fetch("/api/submit", {
@@ -566,6 +568,7 @@ export function TicketForm({
             <ReviewRow label="Email" value={installationData.email} />
             <ReviewRow label="Mobile" value={installationData.mobile} />
             <ReviewRow label="Address" value={installationData.address} />
+            <ReviewRow label="State" value={installationData.state} />
             <ReviewRow label="Problem type" value={selectedType?.label} />
             <ReviewBlock label="Description" value={description} />
           </dl>
