@@ -6,7 +6,11 @@ const NON_WEBVIEW_TESTS = [
   "**/interaction.spec.ts",
 ];
 const WEBVIEW_TESTS = ["**/webview.spec.ts"];
-const UNIT_TESTS = ["**/hmac.spec.ts", "**/token.spec.ts"];
+const UNIT_TESTS = [
+  "**/hmac.spec.ts",
+  "**/token.spec.ts",
+  "**/validation.spec.ts",
+];
 
 const SHINEPHONE_UA =
   "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/87.0.4280.141 Mobile Safari/537.36 ShinePhone/Android/5.1.0";

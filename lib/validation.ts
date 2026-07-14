@@ -30,6 +30,11 @@ export function validateAuMobile(value: string | undefined): string | null {
   const v = (value ?? "").trim();
   if (v === "") return "Mobile number is required";
   const digits = v.replace(/[\s()-]/g, "");
+  // INTENTIONAL: accept only AU mobile numbers — local `04XXXXXXXX` or
+  // international `+614XXXXXXXX`. Landlines (e.g. `08…`) are DELIBERATELY
+  // rejected, not an oversight: after-sales relies on SMS notifications and
+  // callback, so a mobile number is a business requirement. Do not broaden
+  // this to accept landlines without a product decision.
   if (/^04\d{8}$/.test(digits) || /^\+614\d{8}$/.test(digits)) return null;
   return "Please enter a valid Australian mobile number (e.g. 0412 345 678)";
 }
