@@ -50,3 +50,14 @@ Use primary for CTAs and key UI elements. Use accent sparingly for highlights.
 3. When uncertain, STOP and ASK - don't guess
 4. After completing a task, summarize: what changed, why
 5. Don't run `npm install` for packages without my approval
+
+## zsh 变量分词陷阱（已踩两次）
+zsh 不对未加引号的变量做 word splitting。
+`grep "$pat" $FILES` 会把整个文件列表当成一个文件名 → 静默扫描 0 个文件 → 返回 0 命中。
+`git checkout --theirs $FILES` 会得到一个无效 pathspec → 什么都不做，但不报错。
+
+🔴 任何把变量展开成多个参数的场景，必须用数组或 xargs：
+   - 数组：files=(a b c); grep "$pat" "${files[@]}"
+   - 或 find ... -print0 | xargs -0 grep
+🔴 任何「返回 0 命中」「操作成功但没效果」的结果，
+   必须先怀疑是不是这个 bug，用直接命令二次验证。
