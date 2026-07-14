@@ -361,6 +361,40 @@ Chrome 83-87 上缩略图不保持正方形，纯布局降级，不崩不白屏�
 🔴 不要跑 npm update，不要删 package-lock.json 重装。
 如需升级依赖，升级后必须跑 npm run check:webview 并重新真机验证。
 
+## Growatt v1.1 上线前置待办（等 ShinePhone 新版开发启动后执行）
+
+### 1. MAX_SNS 从 5 收紧到 1
+现状：lib/token.ts 的 parseSnList 允许 1-5 个逗号分隔 SN（MAX_SNS=5），
+但 v1.1 spec 已确认**只允许单个 SN**。契约与实现不一致。
+风险：若 Growatt 误传多个 SN，代码会放行，随后整串 SOSL FIND 必然 0 命中，
+Job 匹配静默失败。
+待办：改成单 SN（有逗号即 malformed），并同步修改 tests/token.spec.ts
+里 4 条 SN 边界断言（当前按 MAX_SNS=5 写）。
+**时机：Growatt 确定 app 更新时间后再改**（现在改会打断本地多 SN 测试链接）。
+
+### 2. 验证 Job__c.Inverter_Battery_Serials__c 实际存的是哪种 SN
+背景：ShinePhone 只认识逆变器（inverter + datalogger/dongle 组合，
+通过 dongle 可读取 PV 与电池数据），所以 URL 里传的是**逆变器 SN**。
+未知：Job__c 的 Inverter_Battery_Serials__c 字段里存的是逆变器 SN（YRP/0VYQ 前缀）
+还是电池 SN（OMRR 前缀）？
+风险：若只存电池 SN，SOSL 用逆变器 SN 搜索将永远 0 命中，Job 匹配功能作废。
+待办：抽样 50 条 Job__c 记录，统计 SN 前缀分布。
+**这是 SOSL 功能能否成立的前提，优先于任何代码改动。**
+
+### 3. SOSL 匹配失败的可行动化（future improvement）
+现状：SOSL 命中 → 填 Job_Number；多命中或 0 命中 → 静默留空。
+客服拿到无 Job 的工单仍需手工查找，等于没有帮助。
+改进方向：
+- 0 命中：记录原因（搜的 SN 是什么、为什么没找到），写进工单备注
+- 多命中：把候选 Job 列表写进文本字段，客服直接看到「可能是这几个」
+- 单一命中：额外做客户信息比对（Job 上的姓名/邮箱/地址 vs ShinePhone 传来的），
+  作为**置信度提示**写进工单，而非匹配条件
+🔴 明确不做：用 email/姓名/地址做自动匹配。
+   这三个字段数据质量比 SN 更差（ShinePhone 账号邮箱 ≠ 合同邮箱、
+   账号名可能是昵称、SF Address 是 Text(50) 会截断），
+   用脏数据校验脏数据只会放大噪音。
+**时机：等 Growatt 开发接近完成、真实数据可验证后再做。**
+
 ## Key File Map
 
 ```text
