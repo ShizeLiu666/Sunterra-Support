@@ -266,7 +266,15 @@ export async function POST(request: Request): Promise<Response> {
     request.headers.get("x-real-ip") ||
     null;
   const reqUa = request.headers.get("user-agent") || null;
-  const tokenResult = verifyToken(urlParams, { ip: reqIp, userAgent: reqUa });
+  // source: "submit" tags verifyToken's structured failure log so a
+  // submit-time rejection is distinguishable from an entry-page one in Vercel
+  // logs. verifyToken already emits the full line (reason + fields + redacted
+  // signString) via its internal logFailure, so nothing is re-implemented here.
+  const tokenResult = verifyToken(urlParams, {
+    ip: reqIp,
+    userAgent: reqUa,
+    source: "submit",
+  });
   if (!tokenResult.valid) {
     console.log(
       `[/api/submit] case_failed: reason=token_${tokenResult.reason ?? "unknown"} sn=${body.token.sn}`

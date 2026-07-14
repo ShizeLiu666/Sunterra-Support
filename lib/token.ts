@@ -85,6 +85,13 @@ const NON_PII_VALUE_KEYS = new Set([
 export interface TokenVerifyContext {
   ip?: string | null;
   userAgent?: string | null;
+  /**
+   * Which entry point invoked verifyToken. Lets Vercel logs distinguish an
+   * entry-page rejection (source=page) from a submit-time rejection
+   * (source=submit) even though both emit the same `[verifyToken]` line.
+   * Purely diagnostic — never affects validation.
+   */
+  source?: "page" | "submit";
 }
 
 interface FailureLogArgs {
@@ -118,6 +125,8 @@ interface FailureLogArgs {
  */
 function logFailure(args: FailureLogArgs): void {
   const parts: string[] = [`[verifyToken] reason=${args.reason}`];
+  // source (page|submit) goes right after reason so it's easy to grep/filter.
+  if (args.context?.source) parts.push(`source=${args.context.source}`);
   parts.push(`fields=[${args.fields.join(",")}]`);
   if (args.sn) parts.push(`sn=${args.sn}`);
   if (args.extras) {

@@ -54,7 +54,7 @@ export default async function HomePage({ searchParams }: PageProps) {
       h.get("x-real-ip") ||
       null;
     const userAgent = h.get("user-agent") || null;
-    const result = verifyToken(urlParams, { ip, userAgent });
+    const result = verifyToken(urlParams, { ip, userAgent, source: "page" });
 
     if (!result.valid) {
       redirect(`/expired?reason=${result.reason}`);
