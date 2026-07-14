@@ -277,6 +277,54 @@ Testing/docs:
 - Update this handover and `docs/integration-spec.md` before declaring future
   signing or deployment changes complete.
 
+## Known Issues / Tech Debt
+
+## UI 测试套件 stale（68 failing，2026-07-14 记录）
+
+**现状：** tests/ui.spec.ts、interaction.spec.ts、responsive.spec.ts、
+webview.spec.ts 共 68 条失败，全部是既有 stale，非代码 bug。
+unit 层（hmac.spec.ts + token.spec.ts）41/41 绿，不受影响。
+
+**三处根因 drift：**
+- radio 文案：测试断言 `System not working` / `Warning or error` / `Battery issue`；
+  现行 PROBLEM_TYPES 为 `Battery Issue` / `Inverter Issue` / `App Monitoring` / …
+- 字数计数器：测试断言 `/500`；代码 MAX_DESCRIPTION_LENGTH = 1000
+- dev fallback 数据：测试断言 `12 Pine Street, Adelaide SA 5000`；
+  代码为 `123 Solar Ave, Adelaide SA 5000, Australia`（含 SN、型号也不符）
+
+**结构性问题：** 约 70% 的 expect() 绑定精确文案或数量，且 ×6 个 device project
+fan-out，导致 3 处内容改动放大成 68 条红。测试保护的是像素级文案，
+不保护真正会变的逻辑（契约校验、SF 写入、幂等）。
+
+**处理计划（milestone-2 合并进 main 之后再做）：**
+- 保留：responsive.spec.ts 的结构性断言（无横向溢出）
+- 保留并加强：webview.spec.ts —— 这是唯一覆盖 ShinePhone WebView UA 的测试，
+  而 WebView 兼容性是本项目历史上最大的风险源，不可删除
+- 重写：把「能填表、能提交、成功页出现」这条主流程改用 data-testid 定位，
+  不再依赖精确文案
+- 删除：toHaveCount(N)、精确文案 getByText、字数计数器断言等易变噪音
+- 目标：UI 测试瘦身为结构/可达性冒烟；验证价值继续压在 unit 层
+
+**为什么不现在做：** UI 测试清理会碰 components/*，而那正是 milestone-2
+合并 main 时的 4 个冲突文件所在。合并后在统一分支上做一次即可。
+
+### deviceType 大小写敏感（契约脆弱点）
+
+lib/token.ts:58 的 ALLOWED_DEVICE_TYPES 是全小写 Set，
+`INVERTER` / `Inverter` 会被判 malformed。
+spec v1.1 §3.2 约定小写，当前实现正确。
+风险：若 Growatt 客户端传大写，会被静默拒收，只有查 Vercel logs
+（reason=malformed cause=device_type_enum）才能定位。
+待办：与 Growatt 明确大小写约定；若对方无法保证，再考虑 .toLowerCase() 归一。
+**此项在 Growatt 开发启动前必须确认。**
+
+### TokenVerificationResult 不是判别联合
+
+types/installation.ts:73-77 是扁平 { valid: boolean; reason?; data? }，
+导致 if (result.valid) 无法收窄 data，所有消费者需用 result.data! 强断言。
+改成 { valid: true; data } | { valid: false; reason } 可让编译器保证类型安全。
+待办：随「字段单一真相源」重构一起做。
+
 ## Key File Map
 
 ```text
