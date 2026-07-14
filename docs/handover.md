@@ -325,6 +325,42 @@ types/installation.ts:73-77 是扁平 { valid: boolean; reason?; data? }，
 改成 { valid: true; data } | { valid: false; reason } 可让编译器保证类型安全。
 待办：随「字段单一真相源」重构一起做。
 
+### WebView 兼容性基线：CSS Chrome 88 / JS Chrome 98（不是 83）
+
+2026-07-14 产物扫描确认，main 和 milestone-2 的实际最低支持版本**完全相同**：
+- **CSS 下限 Chrome 88** —— Tailwind v4 preflight 未加护栏的 `:where()` / `:is()`。
+- **JS 下限 Chrome 98** —— Next 16 framework 运行时用了 `structuredClone`（Ch98）
+  和 `.at()`（Ch92），在 `main-*.js` / `413-*.js` 里，两分支字节相同、无法移除。
+
+历史上认为的「Chrome 83 基线」已不成立——当前生产 `main` 就已经是这个下限。
+（更正：早先一版「JS 全零」的结论来自一个坏掉的 grep（zsh 不对未加引号变量分词），
+实际 JS 下限是 98，且 main/milestone-2 一致。structuredClone 在 Next 路由代码里，
+是否落在 ShinePhone 的实际路径上，建议在真机最低 Chrome 版本上确认——但这是 main 既有属性，
+不是 milestone-2 引入。）
+
+固化：`npm run check:webview`（`next build` + `scripts/scan-artifacts.mjs`）。
+采用**基线快照**而非黑名单——把当前已验证产物里「可接受」的命中数快照进
+`scripts/webview-baseline.json`，**只有当某个受控语法的计数超过基线（= 新引入了东西）
+或出现全新受控语法时才 exit 1**。这样既容忍 Next framework 的 `.at()`/`structuredClone`、
+也容忍 Tailwind 的类名（`.\@container` 标记类、`.text-wrap{text-wrap:wrap}` 默认值都非危险），
+又能抓住「未来某次依赖升级让产物冒出真正的 `:has()` / `@container` at-rule」。
+经审阅后接受某处变化时，用 `node scripts/scan-artifacts.mjs --update` 刷新基线。
+color-mix/oklch/oklab 不受控——它们有 `@supports` 护栏 + rgb 回退，安全。
+
+### aspect-square 的已知降级（可接受）
+
+components/ticket-form.tsx 的照片缩略图用了 Tailwind aspect-square，
+产出未加护栏的 aspect-ratio（Chrome 88）。
+Chrome 83-87 上缩略图不保持正方形，纯布局降级，不崩不白屏。
+因下限本就 ≥88（且 JS 下限 98 更高），此项不拉低支持面。**决定：不修。**
+
+### 依赖锁定是最重要的防线
+
+历史上的 WebView 问题（@layer、Array.prototype.at）全部来自依赖产物，
+不是手写代码。main（milestone-1）的 lockfile 是经过真机验证的黄金基线。
+🔴 不要跑 npm update，不要删 package-lock.json 重装。
+如需升级依赖，升级后必须跑 npm run check:webview 并重新真机验证。
+
 ## Key File Map
 
 ```text

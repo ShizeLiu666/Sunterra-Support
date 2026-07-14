@@ -1,0 +1,19 @@
+{
+  "_comment": "Accepted WebView-syntax baseline. CI (scripts/scan-artifacts.mjs) fails if any gated pattern's count exceeds these. Regenerate after a reviewed change: node scripts/scan-artifacts.mjs --update",
+  "updated": "run `node scripts/scan-artifacts.mjs --update` to refresh",
+  "gated": {
+    ":has(": 0,
+    "@container (at-rule)": 0,
+    "text-wrap:balance|pretty": 0,
+    "@layer (at-rule, should be flattened)": 0,
+    "CSS nesting &{ (should be flattened)": 0,
+    "lab(": 0,
+    "lch(": 0,
+    ".at(": 3,
+    "structuredClone": 2,
+    "Object.hasOwn": 0,
+    ".replaceAll(": 0,
+    ".findLast(": 0,
+    ".findLastIndex(": 0
+  }
+}
