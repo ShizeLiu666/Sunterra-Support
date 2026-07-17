@@ -268,8 +268,39 @@ export async function createCustomerCare(
   const id = json.id;
   const name = await fetchCustomerCareName(id, token);
 
+  // --- case_created log: SOSL job-match observability (log-only) ---
+  // sn_prefix = family code of the matched SN(s), so a miss can be classified
+  // by SN type (inverter vs battery) at a glance. Safe on empty/undefined/multi:
+  //   - leading letters are the family code: "RXS1F4K04L" -> RXS, "YRP0.." -> YRP,
+  //     "OMRR.." -> OMRR
+  //   - a digit-leading SN has no leading letters, so fall back to first 4 chars:
+  //     "0VYQ.." -> 0VYQ
+  //   - multi-SN (comma-joined): each part's prefix, deduped, joined with "|"
+  //   - empty / undefined -> "(none)"  (never throws)
+  const snPrefix = (raw: string | undefined | null): string => {
+    const parts = (raw ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (parts.length === 0) return "(none)";
+    const prefixes = parts.map((s) => {
+      const up = s.toUpperCase();
+      const letters = up.match(/^[A-Z]+/);
+      return letters
+        ? letters[0].slice(0, 4)
+        : up.replace(/[^A-Z0-9]/g, "").slice(0, 4);
+    });
+    return [...new Set(prefixes)].join("|");
+  };
+  // Fixed, grep-able tag for a REAL miss: SOSL actually ran but found nothing.
+  // Strictly sosl_enabled===true && matched===false — NOT when SOSL is disabled.
+  const missTag =
+    env.ENABLE_SOSL_JOB_LOOKUP === true && matchedJob === null
+      ? " JOB_LOOKUP_MISS"
+      : "";
+
   console.log(
-    `[salesforce] createCustomerCare: case_created id=${id} name=${name ?? "(unavailable)"} sn=${input.sn} type=${input.type} sosl_enabled=${env.ENABLE_SOSL_JOB_LOOKUP} matched=${matchedJob !== null} ${matchedJob ? `job=${matchedJob.name}(${matchedJob.id})` : "job=null"}`
+    `[salesforce] createCustomerCare: case_created id=${id} name=${name ?? "(unavailable)"} sn=${input.sn} sn_prefix=${snPrefix(input.sn)} type=${input.type} sosl_enabled=${env.ENABLE_SOSL_JOB_LOOKUP} matched=${matchedJob !== null} ${matchedJob ? `job=${matchedJob.name}(${matchedJob.id})` : "job=null"}${missTag}`
   );
 
   return {
